@@ -1,0 +1,21 @@
+[package]
+name = "leptos_sync_ssr"
+version = "0.0.1"
+authors = ["Tommy Yu <tommy.yu@auckland.ac.nz>"]
+license = "MIT"
+repository = "https://github.com/metatoaster/leptos_sync_ssr"
+description = "A helper for the Leptos Rust web framework for synchronizing server-side resources"
+readme = "README.md"
+rust-version = "1.80"
+edition = "2021"
+
+[dependencies]
+leptos = { version = "0.7.7" }
+tokio = { version = "1", features = ["sync"], optional = true }
+
+[features]
+default = []
+ssr = [
+    "leptos/ssr",
+    "dep:tokio",
+]
