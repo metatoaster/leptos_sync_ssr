@@ -1,0 +1,20 @@
+* {
+    font-family: sans-serif;
+}
+
+code {
+    font-family: monospace;
+}
+
+div#notice {
+    display: none;
+}
+
+div#notice.panicked {
+    position: sticky;
+    top: 0;
+    margin: 0 0 1em;
+    padding: 0.5em;
+    border-bottom: 2px solid #f00;
+    display: block;
+}
