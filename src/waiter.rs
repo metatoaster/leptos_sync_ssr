@@ -1,6 +1,6 @@
 #[cfg(feature = "ssr")]
 mod ssr {
-    pub use leptos::prelude::{expect_context, provide_context, use_context};
+    pub use leptos::context::{provide_context, use_context};
     pub use std::sync::{Arc, RwLock};
     pub use tokio::sync::broadcast::{channel, Receiver, Sender};
 }
@@ -106,10 +106,20 @@ impl WaiterSubscription {
 
 #[cfg(feature = "ssr")]
 impl Waiter {
-    pub(crate) fn complete() {
-        let waiter = expect_context::<Waiter>();
-        *waiter.inner.resolved.write().unwrap() = true;
-        let _ = waiter.inner.sender.send(Message);
+    pub(crate) fn new() -> Waiter {
+        let (sender, _) = channel(1);
+        let resolved = RwLock::new(false);
+        let waiter = Waiter {
+            inner: WaiterInner { sender, resolved }.into(),
+            _phantom: Message,
+        };
+        provide_context(waiter.clone());
+        waiter
+    }
+
+    pub(crate) fn complete(&self) {
+        *self.inner.resolved.write().unwrap() = true;
+        let _ = self.inner.sender.send(Message);
         // TODO if we were to provide a tracing feature...
         // if let Ok(_) = waiter.inner.sender.send(Message) {
         //     leptos::logging::log!(
@@ -120,16 +130,4 @@ impl Waiter {
         //     leptos::logging::log!("no subscribers available to receive completion");
         // }
     }
-}
-
-#[cfg(feature = "ssr")]
-pub(crate) fn provide_waiter() -> Waiter {
-    let (sender, _) = channel(1);
-    let resolved = RwLock::new(false);
-    let waiter = Waiter {
-        inner: WaiterInner { sender, resolved }.into(),
-        _phantom: Message,
-    };
-    provide_context(waiter.clone());
-    waiter
 }
