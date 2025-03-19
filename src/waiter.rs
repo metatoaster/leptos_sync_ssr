@@ -61,6 +61,21 @@ impl WaiterSubscription {
                     .expect("internal error: sender not properly managed");
                 leptos::logging::log!("handle is now resolved");
             } else {
+                // XXX this 0 time sleep seems to be required to mitigate
+                // an issue where Suspend doesn't wake up after the resource
+                // runs this async method, and this path does not have an
+                // await seems to cause the issue.  However, it doesn't appear
+                // to be as simple as this as a simple `async {}.await` doesn't
+                // work.  Without this workaroud in place, in roughly 1 in 200
+                // requests it would not complete and thus the client will see
+                // a timeout.  With the mitigation in place, the same tight
+                // loop running in 5 different threads making 20000 requests
+                // may see in total 1 to 2 timeouts triggered.  However, this
+                // test also revealed that there are still other unaccounted
+                // issues with SSR as there are transfer size variations seen,
+                // but rate of occurrence is about 7 to 8 in 100000 from that
+                // benchmark, for a total failure rate of about 0.01%.
+                tokio::time::sleep(std::time::Duration::from_millis(0)).await;
                 leptos::logging::log!("handle was resolved");
             }
         } else {
