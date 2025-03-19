@@ -6,7 +6,9 @@ use leptos_router::{
 };
 
 use leptos_sync_ssr::component::SyncSsr;
-#[cfg(feature = "ssr")]
+// for laziness, feature gating may be omitted, but may add to the wasm
+// size as cost; likewise for all usage of Waiter below.
+// #[cfg(feature = "ssr")]
 use leptos_sync_ssr::waiter::Waiter;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
@@ -46,8 +48,8 @@ pub fn App() -> impl IntoView {
             <header>
                 <div id="notice">
                     "This WASM application has panicked, please refer to the "
-                    "console log for details.  Go back "
-                    <a href="/" target="_self">"Home"</a>
+                    "console log for details.  Go "
+                    <a href="/" target="_self">"Home"</a>" "
                     "to restart the application."
                 </div>
                 <nav>
@@ -61,7 +63,7 @@ pub fn App() -> impl IntoView {
                 <Routes fallback>
                     <Route path=path!("") view=HomePage/>
                     <Route path=path!("non-issue") view=NonIssue ssr=SsrMode::Async/>
-                    <Route path=path!("error") view=HydrationIssue ssr=SsrMode::Async/>
+                    <Route path=path!("error") view=Uncorrected ssr=SsrMode::Async/>
                     <Route path=path!("fixed") view=Corrected ssr=SsrMode::Async/>
                 </Routes>
             </main>
@@ -86,7 +88,7 @@ pub fn UsingSignal() -> impl IntoView {
 
     // This waiter will have _no_ effect whatsoever if this component
     // is not enclosed by the `SyncSsr` component.
-    #[cfg(feature = "ssr")]
+    // #[cfg(feature = "ssr")]
     let waiter = Waiter::handle();
 
     // Since the signal may not actually contain a resource, it cannot
@@ -95,11 +97,11 @@ pub fn UsingSignal() -> impl IntoView {
     let value = Resource::new_blocking(
         || (),
         move |_| {
-            #[cfg(feature = "ssr")]
+            // #[cfg(feature = "ssr")]
             let waiter = waiter.clone();
             async move {
                 leptos::logging::log!("preparing to subscribe and wait");
-                #[cfg(feature = "ssr")]
+                // #[cfg(feature = "ssr")]
                 waiter.subscribe().wait().await;
                 leptos::logging::log!("subscription finished waiting");
                 let value = if let Some(Some(res)) = rs.try_get() {
@@ -198,7 +200,7 @@ pub fn NonIssue() -> impl IntoView {
             "Reload this page under SSR to see if the hydration issue may be "
             "triggered.  This version shouldn't have issue as the setter is "
             "before the user.  Do note that when running under the default "
-            "tokio multithread runtime (for axum), there may be variations "
+            "Tokio multithread runtime (for Axum), there may be variations "
             "with the size of the document from the effects of uncontrolled "
             "race conditions from the interactions between the signals and "
             "resources used even in this small example."
@@ -221,7 +223,11 @@ pub fn NonIssue() -> impl IntoView {
 }
 
 #[component]
-pub fn HydrationIssue() -> impl IntoView {
+pub fn HydrationIssue(
+    #[prop(default = "Below can result in hydration issue")]
+    title: &'static str,
+    children: Children,
+) -> impl IntoView {
     // The idea is to provide a signal of a resource, and using a
     // resource is required for this pattern simply because they will
     // be waited under modes like `SsrMode::Async.
@@ -230,12 +236,8 @@ pub fn HydrationIssue() -> impl IntoView {
     provide_context(ws);
 
     view! {
-        <h1>"Below can result in hydration issue"</h1>
-        <p>
-            "Reload this page under SSR to see if the hydration issue may be "
-            "triggered.  This version may have issues during hydration given "
-            "that the signal setter is after the user."
-        </p>
+        <h1>{title}</h1>
+        <p>{children()}</p>
         <dl>
             <dt>
                 <code>"<UsingSignal/>"</code>
@@ -254,10 +256,31 @@ pub fn HydrationIssue() -> impl IntoView {
 }
 
 #[component]
+pub fn Uncorrected() -> impl IntoView {
+    view! {
+        <HydrationIssue>
+            "Reload this page under SSR to see if the hydration "
+            "issue may be triggered.  This version may have issues during "
+            "hydration given that the signal setter is after the user, and "
+            "this uncertainty is partly due to the work-stealing task "
+            "runner that Axum uses - it may or may not result in the "
+            "correct race condition to happen to trigger the desired "
+            "outcome."
+        </HydrationIssue>
+    }
+}
+
+#[component]
 pub fn Corrected() -> impl IntoView {
     view! {
         <SyncSsr>
-            <HydrationIssue/>
+            <HydrationIssue title="Below shouldn't have hydration issues.">
+                "Reload this page under SSR to see if the hydration issue "
+                "may be triggered.  This version should not trigger any "
+                "hydration issues even though it is the exact same "
+                "component, just that it's been wrapped with the "<code>
+                "<SyncSsr>"</code>" component."
+            </HydrationIssue>
         </SyncSsr>
     }
 }

@@ -10,7 +10,6 @@ pub fn hydrate() {
         // the console while also attempt to update the UI to indicate
         // a restart of the application is required to continue.
         console_error_panic_hook::hook(info);
-        let window = leptos::prelude::window();
         let document = leptos::prelude::document();
         let _ = document.query_selector("#notice").map(|el| {
             el.map(|el| {
