@@ -1,11 +1,8 @@
 use leptos::prelude::*;
 use leptos_meta::{MetaTags, *};
 use leptos_router::{
-    components::{ParentRoute, Route, Router, Routes, A},
-    hooks::use_params,
-    nested_router::Outlet,
-    params::Params,
-    path, MatchNestedRoutes, ParamSegment, SsrMode, StaticSegment,
+    components::{Route, Router, Routes, A},
+    path, SsrMode,
 };
 
 use leptos_sync_ssr::component::SyncSsr;
@@ -105,7 +102,7 @@ pub fn UsingSignal() -> impl IntoView {
                 #[cfg(feature = "ssr")]
                 waiter.subscribe().wait().await;
                 leptos::logging::log!("subscription finished waiting");
-                let value = if let Some(res) = rs.get() {
+                let value = if let Some(Some(res)) = rs.try_get() {
                     leptos::logging::log!("readsignal has OnceResource");
                     let result = Some(res.await);
                     leptos::logging::log!("finished awaiting for OnceResource");
@@ -147,6 +144,10 @@ pub fn UsingSignal() -> impl IntoView {
 #[component]
 pub fn SettingSignal() -> impl IntoView {
     let ws = expect_context::<WriteSignal<Option<OnceResource<String>>>>();
+    on_cleanup(move || {
+        leptos::logging::log!("Running on_cleanup");
+        ws.try_set(None);
+    });
 
     let server_call = Resource::new_blocking(
         || (),
@@ -156,6 +157,9 @@ pub fn SettingSignal() -> impl IntoView {
     );
 
     let static_value = "Hello World!";
+    // while the resource can be set via the signal directly here, having
+    // a hook that gets called when the view is initiated emulates a kind
+    // of reactivity that would determine whether or not it is set.
     let hook = move || ws.set(Some(OnceResource::new(async move {
         let _ = server_call.await;
         static_value.to_string()
@@ -199,11 +203,6 @@ pub fn NonIssue() -> impl IntoView {
             "race conditions from the interactions between the signals and "
             "resources used even in this small example."
         </p>
-        // TODO actually test that this works in this case, I have a suspicion
-        // that the way I set this up may not sufficiently robust and have a
-        // race condition due to how resolved is not sufficiently coupled
-        // together with the signal.
-        // <SyncSsr>
         <dl>
             <dt>
                 <code>"<SettingSignal/>"</code>
@@ -218,7 +217,6 @@ pub fn NonIssue() -> impl IntoView {
                 <UsingSignal/>
             </dd>
         </dl>
-        // </SyncSsr>
     }
 }
 
