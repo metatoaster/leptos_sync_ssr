@@ -77,7 +77,7 @@ use server::*;
 
 pub mod navigation {
     use super::*;
-    use crate::portlet::{render_portlet, PortletCtx};
+    use leptos_sync_ssr::portlet::{render_portlet, PortletCtx};
 
     #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
     pub struct NavItem {

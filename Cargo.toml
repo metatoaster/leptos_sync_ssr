@@ -11,10 +11,14 @@ edition = "2021"
 
 [dependencies]
 leptos = { version = "0.8.0-beta" }
+serde = { version = "1", optional = true }
 tokio = { version = "1", features = ["sync"], optional = true }
 
 [features]
 default = []
+portlet = [
+    "dep:serde",
+]
 ssr = [
     "leptos/ssr",
     "dep:tokio",

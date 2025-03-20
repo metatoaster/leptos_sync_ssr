@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
-use leptos_sync_ssr::Ready;
+use crate::Ready;
 
 #[derive(Clone, Debug, Default)]
 pub struct PortletCtx<T> {
