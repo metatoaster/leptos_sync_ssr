@@ -10,7 +10,7 @@ rust-version = "1.80"
 edition = "2021"
 
 [dependencies]
-leptos = { version = "0.8.0-alpha" }
+leptos = { version = "0.8.0-beta" }
 tokio = { version = "1", features = ["sync"], optional = true }
 
 [features]

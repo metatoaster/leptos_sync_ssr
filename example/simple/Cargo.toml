@@ -10,10 +10,10 @@ crate-type = ["cdylib", "rlib"]
 axum = { version = "0.8", optional = true }
 console_error_panic_hook = "0.1.7"
 console_log = "1.0"
-leptos = { version = "0.8.0-alpha", features = ["tracing"] }
-leptos_axum = { version = "0.8.0-alpha", optional = true }
-leptos_meta = { version = "0.8.0-alpha" }
-leptos_router = { version = "0.8.0-alpha" }
+leptos = { version = "0.8.0-beta", features = ["tracing"] }
+leptos_axum = { version = "0.8.0-beta", optional = true }
+leptos_meta = { version = "0.8.0-beta" }
+leptos_router = { version = "0.8.0-beta" }
 leptos_sync_ssr = { path = "../.." }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
