@@ -12,26 +12,26 @@ use leptos::{
 };
 
 #[cfg(feature = "ssr")]
-use crate::waiter::Waiter;
+use crate::ready::Ready;
 
 #[component]
 pub fn SyncSsr(children: Children) -> impl IntoView {
     // leptos::logging::log!("entering SyncSsr");
     #[cfg(feature = "ssr")]
-    let waiter = Waiter::new();
+    let ready = Ready::new();
 
     #[cfg(feature = "ssr")]
     let exit = {
-        let waiter = waiter.clone();
+        let ready = ready.clone();
         move || {
-            waiter.complete();
+            ready.complete();
             // leptos::logging::log!("exiting SyncSsr");
         }
     };
 
     #[cfg(feature = "ssr")]
     let result = view! {
-        <Provider value=waiter>
+        <Provider value=ready>
             {children()}
             {exit}
         </Provider>

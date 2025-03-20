@@ -12,54 +12,54 @@ use ssr::*;
 struct Message;
 
 #[derive(Clone)]
-pub struct Waiter {
+pub struct Ready {
     #[cfg(feature = "ssr")]
-    inner: Arc<WaiterInner>,
+    inner: Arc<ReadyInner>,
     _phantom: Message,
 }
 
 #[cfg(feature = "ssr")]
-struct WaiterInner {
+struct ReadyInner {
     sender: Sender<Message>,
     resolved: RwLock<bool>,
 }
 
 #[derive(Clone)]
-pub struct WaiterHandle {
+pub struct ReadyHandle {
     #[cfg(feature = "ssr")]
-    inner: Option<Waiter>,
+    inner: Option<Ready>,
     _phantom: Message,
 }
 
-pub struct WaiterSubscription {
+pub struct ReadySubscription {
     #[cfg(feature = "ssr")]
-    inner: Option<WaiterSubscriptionInner>,
+    inner: Option<ReadySubscriptionInner>,
     _phantom: Message,
 }
 
 #[cfg(feature = "ssr")]
-struct WaiterSubscriptionInner {
-    waiter: Waiter,
+struct ReadySubscriptionInner {
+    ready: Ready,
     receiver: Receiver<Message>,
 }
 
-impl Waiter {
-    pub fn handle() -> WaiterHandle {
-        WaiterHandle {
+impl Ready {
+    pub fn handle() -> ReadyHandle {
+        ReadyHandle {
             #[cfg(feature = "ssr")]
-            inner: use_context::<Waiter>(),
+            inner: use_context::<Ready>(),
             _phantom: Message,
         }
     }
 }
 
-impl WaiterHandle {
-    pub fn subscribe(&self) -> WaiterSubscription {
-        WaiterSubscription {
+impl ReadyHandle {
+    pub fn subscribe(&self) -> ReadySubscription {
+        ReadySubscription {
             #[cfg(feature = "ssr")]
-            inner: self.inner.clone().map(|waiter| WaiterSubscriptionInner {
-                waiter: waiter.clone(),
-                receiver: waiter.inner.sender.subscribe(),
+            inner: self.inner.clone().map(|ready| ReadySubscriptionInner {
+                ready: ready.clone(),
+                receiver: ready.inner.sender.subscribe(),
             }),
             _phantom: Message,
         }
@@ -67,17 +67,17 @@ impl WaiterHandle {
 }
 
 #[cfg(not(feature = "ssr"))]
-impl WaiterSubscription {
+impl ReadySubscription {
     pub fn wait(self) -> impl std::future::Future<Output = ()> {
         async {}
     }
 }
 
 #[cfg(feature = "ssr")]
-impl WaiterSubscription {
+impl ReadySubscription {
     pub async fn wait(mut self) {
         if let Some(mut inner) = self.inner.take() {
-            if !*inner.waiter.inner.resolved.read().unwrap() {
+            if !*inner.ready.inner.resolved.read().unwrap() {
                 inner
                     .receiver
                     .recv()
@@ -105,26 +105,26 @@ impl WaiterSubscription {
 }
 
 #[cfg(feature = "ssr")]
-impl Waiter {
-    pub(crate) fn new() -> Waiter {
+impl Ready {
+    pub(crate) fn new() -> Ready {
         let (sender, _) = channel(1);
         let resolved = RwLock::new(false);
-        let waiter = Waiter {
-            inner: WaiterInner { sender, resolved }.into(),
+        let ready = Ready {
+            inner: ReadyInner { sender, resolved }.into(),
             _phantom: Message,
         };
-        provide_context(waiter.clone());
-        waiter
+        provide_context(ready.clone());
+        ready
     }
 
     pub(crate) fn complete(&self) {
         *self.inner.resolved.write().unwrap() = true;
         let _ = self.inner.sender.send(Message);
         // TODO if we were to provide a tracing feature...
-        // if let Ok(_) = waiter.inner.sender.send(Message) {
+        // if let Ok(_) = ready.inner.sender.send(Message) {
         //     leptos::logging::log!(
         //         "broadcasted complete to {} subscribers",
-        //         waiter.inner.sender.receiver_count(),
+        //         ready.inner.sender.receiver_count(),
         //     );
         // } else {
         //     leptos::logging::log!("no subscribers available to receive completion");

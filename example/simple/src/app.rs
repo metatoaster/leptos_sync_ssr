@@ -7,9 +7,9 @@ use leptos_router::{
 
 use leptos_sync_ssr::component::SyncSsr;
 // for laziness, feature gating may be omitted, but may add to the wasm
-// size as cost; likewise for all usage of Waiter below.
+// size as cost; likewise for all usage of Ready below.
 // #[cfg(feature = "ssr")]
-use leptos_sync_ssr::waiter::Waiter;
+use leptos_sync_ssr::Ready;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     view! {
@@ -86,10 +86,10 @@ pub fn UsingSignal() -> impl IntoView {
     // using data from a server function, but that is set elsewhere.
     let rs = expect_context::<ReadSignal<Option<OnceResource<String>>>>();
 
-    // This waiter will have _no_ effect whatsoever if this component
-    // is not enclosed by the `SyncSsr` component.
+    // Ready will have _no_ effect whatsoever if this component is not
+    // enclosed by the `SyncSsr` component.
     // #[cfg(feature = "ssr")]
-    let waiter = Waiter::handle();
+    let ready = Ready::handle();
 
     // Since the signal may not actually contain a resource, it cannot
     // be awaited.  Encapsulate the usage of the signal in another
@@ -98,11 +98,11 @@ pub fn UsingSignal() -> impl IntoView {
         || (),
         move |_| {
             // #[cfg(feature = "ssr")]
-            let waiter = waiter.clone();
+            let ready = ready.clone();
             async move {
                 leptos::logging::log!("preparing to subscribe and wait");
                 // #[cfg(feature = "ssr")]
-                waiter.subscribe().wait().await;
+                ready.subscribe().wait().await;
                 leptos::logging::log!("subscription finished waiting");
                 let value = if let Some(Some(res)) = rs.try_get() {
                     leptos::logging::log!("readsignal has OnceResource");

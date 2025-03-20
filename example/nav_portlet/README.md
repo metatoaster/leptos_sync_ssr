@@ -18,14 +18,14 @@ the signal, but the SSR was not rendered as such, resulting in the much
 dreaded hydration error.
 
 If there is some way to pause the resource that will read from the
-signal under SSR, the situation will be different.  This `Waiter`
+signal under SSR, the situation will be different.  This `Ready`
 provided by the `leptos_sync_ssr` package is one part of the solution
 that will achieve that, as it will wait until a signal is provided
 before it will continue.  The other part is the `SyncSsr` component
 which encloses the components that should be synchronized so that the
-`Waiter` will be signaled to continue on from this synchronized state.
+`Ready` will be signaled to continue on from this synchronized state.
 
-In this example, the `ReadSignal` will not be read until the `Waiter`
+In this example, the `ReadSignal` will not be read until the `Ready`
 resolves, and by enclosing the portlet component with the routes will
 ensure that whatever routes setting the resource through the signal will
 do so in a way what ensures the component will read it correctly during

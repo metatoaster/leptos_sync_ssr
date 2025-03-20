@@ -1,7 +1,7 @@
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
-use leptos_sync_ssr::waiter::Waiter;
+use leptos_sync_ssr::Ready;
 
 #[derive(Clone, Debug, Default)]
 pub struct PortletCtx<T> {
@@ -61,7 +61,7 @@ where
     <T as leptos::prelude::IntoRender>::Output: RenderHtml,
 {
     #[cfg(feature = "ssr")]
-    let waiter = Waiter::handle();
+    let ready = Ready::handle();
 
     let rs = expect_context::<ReadSignal<PortletCtx<T>>>();
     let refresh = rs.get_untracked().refresh;
@@ -75,12 +75,12 @@ where
         move |id| {
             leptos::logging::log!("refresh id {id}");
             #[cfg(feature = "ssr")]
-            let waiter = waiter.clone();
+            let ready = ready.clone();
             async move {
                 leptos::logging::log!("PortletCtxRender Suspend resource entering");
                 leptos::logging::log!("refresh id {id}");
                 #[cfg(feature = "ssr")]
-                waiter.subscribe().wait().await;
+                ready.subscribe().wait().await;
                 let ctx = rs.get();
                 leptos::logging::log!("portlet_ctx.inner = {:?}", ctx.inner);
                 let result = if let Some(resource) = ctx.inner {

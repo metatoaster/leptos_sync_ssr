@@ -1,2 +1,4 @@
 pub mod component;
-pub mod waiter;
+mod ready;
+
+pub use ready::Ready;
