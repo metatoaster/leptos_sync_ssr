@@ -6,7 +6,7 @@ use crate::Ready;
 #[derive(Clone, Debug, Default)]
 pub struct PortletCtx<T> {
     inner: Option<ArcResource<Result<T, ServerFnError>>>,
-    refresh: RwSignal<usize>,
+    refresh: ArcRwSignal<usize>,
 }
 
 impl<T> PortletCtx<T>
@@ -38,9 +38,9 @@ where
     /// The reason why there is no constructor provided and only done so
     /// via signal is to have these contexts function as a singleton.
     pub fn provide() {
-        let (rs, ws) = signal(PortletCtx::<T> {
+        let (rs, ws) = arc_signal(PortletCtx::<T> {
             inner: None,
-            refresh: RwSignal::new(0),
+            refresh: ArcRwSignal::new(0),
         });
         provide_context(rs);
         provide_context(ws);
@@ -63,9 +63,9 @@ where
     #[cfg(feature = "ssr")]
     let ready = Ready::handle();
 
-    let rs = expect_context::<ReadSignal<PortletCtx<T>>>();
+    let rs = expect_context::<ArcReadSignal<PortletCtx<T>>>();
     let refresh = rs.get_untracked().refresh;
-    let resource = Resource::new_blocking(
+    let resource = ArcResource::new_blocking(
         {
             move || {
                 leptos::logging::log!("into_render suspend resource signaled!");
@@ -76,6 +76,7 @@ where
             leptos::logging::log!("refresh id {id}");
             #[cfg(feature = "ssr")]
             let ready = ready.clone();
+            let rs = rs.clone();
             async move {
                 leptos::logging::log!("PortletCtxRender Suspend resource entering");
                 leptos::logging::log!("refresh id {id}");
@@ -95,6 +96,7 @@ where
     );
 
     let suspend = move || {
+        let resource = resource.clone();
         Suspend::new(async move {
             leptos::logging::log!("PortletCtxRender Suspend entering");
             let result = resource.await?;
