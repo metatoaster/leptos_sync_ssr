@@ -140,14 +140,18 @@ the `simple` example.
 
 ## Alternative packages, solutions and limitations
 
-The approach provided by this package is certainly not the only option,
-an alternative is to take the same approach as [`leptos_async_signal`](
+The approach provided by this package is certainly not the only option
+for passing values asynchronously to an earlier component.  One
+alternative is to follow the approach taken by [`leptos_async_signal`](
 https://github.com/demiurg-dev/leptos_async_signal/).  That package
-provides a mechansim for generating values asynchronously, it claims to
+provides a mechanism for generating values asynchronously, it claims to
 mimic the approach taken by `leptos_meta`, however, it does require the
-`AsyncWriteSignal` be used if a `AsyncReadSignal` were to be read,
-otherwise a deadlock will ensure, plus other rules that must be followed
-to avoid deadlocks.
+`AsyncWriteSignal` be used if the paired `ArcResource` were to be read,
+otherwise a deadlock will ensure, The particular issue about unused
+signals causing deadlocks may be addressed should this [pull request](
+https://github.com/demiurg-dev/leptos_async_signal/pull/15) be merged.
+However, there are other rules that must be followed to avoid deadlocks,
+so extra care must be taken to use its `async_signal` correctly.
 
 On the other hand, `leptos_sync_ssr` does not have such limitations -
 the waiting can happen inside a `Suspend`, just that it may be better to
@@ -165,7 +169,11 @@ requests (5 concurrent).  Whereas the solution provided with
 `leptos_sync_ssr` merely extends on the existing features so the issues
 of that interaction will still apply.  In 100k requests, up to 10
 requests may have an unexpected output which may or may not affect
-hydration.
+hydration, although this may simply caused by a lack of synchronization
+in Leptos itself when running inside a work-stealing task scheduler. A
+discussion of the underlying topic at [`leptos/leptos-rs#3729`](
+https://github.com/leptos-rs/leptos/issues/3729) currently documents my
+findings with the particular pattern I've used.
 
 ## License
 
