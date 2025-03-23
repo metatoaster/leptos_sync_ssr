@@ -4,12 +4,12 @@ use leptos::prelude::*;
 use crate::Ready;
 
 #[derive(Clone, Debug, Default)]
-pub struct PortletCtx<T> {
-    inner: Option<ArcResource<Result<T, ServerFnError>>>,
+pub struct PortletCtx<T, E = ServerFnError> {
+    inner: Option<ArcResource<Result<T, E>>>,
     refresh: ArcRwSignal<usize>,
 }
 
-impl<T> PortletCtx<T>
+impl<T, E> PortletCtx<T, E>
 where
     T: serde::Serialize
         + serde::de::DeserializeOwned
