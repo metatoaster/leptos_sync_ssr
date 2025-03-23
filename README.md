@@ -121,7 +121,7 @@ feature as per convention:
 
 ```toml
 [dependencies]
-leptos_sync_ssr = "0.0.1"
+leptos_sync_ssr = "0.1.0-beta"
 leptos = "0.8.0-beta"
 
 [features]
