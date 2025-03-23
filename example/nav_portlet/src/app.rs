@@ -134,7 +134,7 @@ pub mod navigation {
 use navigation::*;
 
 pub fn shell(options: LeptosOptions) -> impl IntoView {
-    leptos::logging::log!(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+    // leptos::logging::log!(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
     view! {
         <!DOCTYPE html>
         <html lang="en">
@@ -339,13 +339,13 @@ pub fn AuthorTop() -> impl IntoView {
         // when unmounting one navigation and be replaced with another.
         move || {
             Effect::new(move || {
-                leptos::logging::log!("Running cleanup of porlet for AuthorTop");
+                // leptos::logging::log!("Running cleanup of porlet for AuthorTop");
                 ws.update(|c| c.clear());
             });
         }
     });
     ws.update(move |c| {
-        leptos::logging::log!("Updating resource for AuthorTop");
+        // leptos::logging::log!("Updating resource for AuthorTop");
         c.set(ArcResource::new_blocking(
             || (),
             move |_| async move {
@@ -476,13 +476,13 @@ pub fn ArticleTop() -> impl IntoView {
         let ws = ws.clone();
         move || {
             Effect::new(move || {
-                leptos::logging::log!("Running cleanup of porlet for ArticleTop");
+                // leptos::logging::log!("Running cleanup of porlet for ArticleTop");
                 ws.update(|c| c.clear());
             });
         }
     });
     ws.update(move |c| {
-        leptos::logging::log!("Updating resource for ArticleTop");
+        // leptos::logging::log!("Updating resource for ArticleTop");
         c.set(ArcResource::new_blocking(
             || (),
             move |_| async move {
