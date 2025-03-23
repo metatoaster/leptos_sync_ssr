@@ -79,13 +79,9 @@ pub fn HomePage() -> impl IntoView {
 }
 
 #[component]
-pub fn UsingSignal() -> impl IntoView {
-    // Get the signal for the resource in here at the component level.
-    // Rather than getting some string, the result is encapsulated in a
-    // resource to simulate how this string may in fact be generated
-    // using data from a server function, but that is set elsewhere.
-    let rs = expect_context::<ReadSignal<Option<OnceResource<String>>>>();
-
+pub fn UsingSignal(
+    rs: ReadSignal<Option<OnceResource<String>>>,
+) -> impl IntoView {
     // Ready will have _no_ effect whatsoever if this component is not
     // enclosed by the `SyncSsr` component.
     // #[cfg(feature = "ssr")]
@@ -144,8 +140,9 @@ pub fn UsingSignal() -> impl IntoView {
 }
 
 #[component]
-pub fn SettingSignal() -> impl IntoView {
-    let ws = expect_context::<WriteSignal<Option<OnceResource<String>>>>();
+pub fn SettingSignal(
+    ws: WriteSignal<Option<OnceResource<String>>>,
+) -> impl IntoView {
     on_cleanup(move || {
         leptos::logging::log!("Running on_cleanup");
         ws.try_set(None);
@@ -187,12 +184,14 @@ pub fn SettingSignal() -> impl IntoView {
 
 #[component]
 pub fn NonIssue() -> impl IntoView {
-    // The idea is to provide a signal of a resource, and using a
-    // resource is required for this pattern simply because they will
-    // be waited under modes like `SsrMode::Async.
+    // Rather than simply passing the string via the signal, pass a
+    // resource as it's one way to set a value asynchronous, and that
+    // dealing with Tokio channels on the server requires async.
+    //
+    // Moreover, using a resource is a requirement for passing values
+    // backwards for isomorphic SSR/CSR rendering as it will allow it
+    // be awaited inside `Suspense` under modes like `SsrMode::Async`.
     let (rs, ws) = signal(None::<OnceResource<String>>);
-    provide_context(rs);
-    provide_context(ws);
 
     view! {
         <h1>"Probably a non-issue"</h1>
@@ -210,13 +209,13 @@ pub fn NonIssue() -> impl IntoView {
                 <code>"<SettingSignal/>"</code>
             </dt>
             <dd>
-                <SettingSignal/>
+                <SettingSignal ws/>
             </dd>
             <dt>
                 <code>"<UsingSignal/>"</code>
             </dt>
             <dd>
-                <UsingSignal/>
+                <UsingSignal rs/>
             </dd>
         </dl>
     }
@@ -228,12 +227,7 @@ pub fn HydrationIssue(
     title: &'static str,
     children: Children,
 ) -> impl IntoView {
-    // The idea is to provide a signal of a resource, and using a
-    // resource is required for this pattern simply because they will
-    // be waited under modes like `SsrMode::Async.
     let (rs, ws) = signal(None::<OnceResource<String>>);
-    provide_context(rs);
-    provide_context(ws);
 
     view! {
         <h1>{title}</h1>
@@ -243,13 +237,13 @@ pub fn HydrationIssue(
                 <code>"<UsingSignal/>"</code>
             </dt>
             <dd>
-                <UsingSignal/>
+                <UsingSignal rs/>
             </dd>
             <dt>
                 <code>"<SettingSignal/>"</code>
             </dt>
             <dd>
-                <SettingSignal/>
+                <SettingSignal ws/>
             </dd>
         </dl>
     }
