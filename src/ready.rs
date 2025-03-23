@@ -9,8 +9,18 @@ mod ssr {
 use ssr::*;
 
 #[derive(Clone)]
-struct Message;
+struct Message;  // also functions as a private phantom
 
+/// The coordinator provided as a context by the [`SyncSsr`](
+/// crate::component::SyncSsr) component.
+///
+/// Under SSR, this contains a `Sender` that will be able to broadcast
+/// a message to all instances of actively waiting [`ReadySubscription`]
+/// to inform the futures that the view tree enclosed by `SyncSsr` is
+/// now ready and thus the wait is over.
+///
+/// Under CSR, this is essentially a unit newtype; all resulting methods
+/// and associated functions would in essence be no-ops.
 #[derive(Clone)]
 pub struct Ready {
     #[cfg(feature = "ssr")]
@@ -24,6 +34,10 @@ struct ReadyInner {
     resolved: RwLock<bool>,
 }
 
+/// A handle to a possibly available [`Ready`] coordinator.
+///
+/// Please refer to [`Ready::handle`] for details as that's the only
+/// public associated function that will return this type.
 #[derive(Clone)]
 pub struct ReadyHandle {
     #[cfg(feature = "ssr")]
@@ -31,6 +45,8 @@ pub struct ReadyHandle {
     _phantom: Message,
 }
 
+/// A subscription to the [`Ready`] coordinator, typically held by
+/// futures that require the ready signal.
 pub struct ReadySubscription {
     #[cfg(feature = "ssr")]
     inner: Option<ReadySubscriptionInner>,
@@ -44,6 +60,25 @@ struct ReadySubscriptionInner {
 }
 
 impl Ready {
+    /// Acquire a handle to a possibly available instance of `Ready`.
+    ///
+    /// This make use of [`use_context`] underneath the hood, so this
+    /// should be called at the component's top level.  In any case, a
+    /// handle will be returned, but the waiting will only happen if a
+    /// `Ready` is in fact provided as a context.
+    ///
+    /// Moreover, given the use of `use_context`, this handle may or may
+    /// not in fact point to the actual `Ready` underneath.  As the only
+    /// function of this type is to ultimately listen for a message, the
+    /// lack of such would only mean no waiting will happen when the
+    /// [`ReadySubscription`] provided by that resulting handle tries to
+    /// [`wait`](ReadySubscription::wait).
+    ///
+    /// This is purposefully designed as such to permit flexible usage
+    /// in any context without the resulting resource and or components
+    /// being tightly coupled to the `SyncSsr` component - the lack of
+    /// such in the parent view tree would simply mean nothing will
+    /// happen.
     pub fn handle() -> ReadyHandle {
         ReadyHandle {
             #[cfg(feature = "ssr")]
@@ -54,6 +89,10 @@ impl Ready {
 }
 
 impl ReadyHandle {
+    /// Subscribe to the [`Ready`] coordinator.
+    ///
+    /// To make use of a subscription within a future, move a clone of
+    /// the handle into the future and call subscribe from there.
     pub fn subscribe(&self) -> ReadySubscription {
         ReadySubscription {
             #[cfg(feature = "ssr")]
@@ -75,6 +114,15 @@ impl ReadySubscription {
 
 #[cfg(feature = "ssr")]
 impl ReadySubscription {
+    /// Asynchronously wait for the ready signal.
+    ///
+    /// This may contain a receiver that will wait for the signal from
+    /// the associated `Ready` which this subscription belongs to.  If
+    /// no such receiver is in fact available (due to how the associated
+    /// [`handle`](Ready::handle) providing this subscription was set
+    /// up), or that a ready signal was already broadcasted, this
+    /// will return immediately, otherwise it will wait for the ready
+    /// message to arrive until execution will be allowed to continue.
     pub async fn wait(mut self) {
         if let Some(mut inner) = self.inner.take() {
             if !*inner.ready.inner.resolved.read().unwrap() {

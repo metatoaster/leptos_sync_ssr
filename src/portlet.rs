@@ -1,8 +1,36 @@
+//! Provides generic helpers to build portlets on Leptos
+//!
+//! Since there are some common UI design patterns that involve placing
+//! elements before the main article while requiring data that's not
+//! available until then, and that those patterns largely can be implemented
+//! as portlets, this module provides some common helpers that will allow
+//! the portlets be placed anywhere in the view tree as this implementation
+//! implements the most conservative execution path that will cater to any
+//! valid positions in the view tree.
+//!
+//! For the most simple case, a simple `RwSignal` with a simple direct
+//! rendering may be all that is required.  This, much more convoluted
+//! implementation is really only required if you don't know where exactly
+//! where the element will ultimately placed in the view tree, but you just
+//! want to write the least possible amount of code as possible to get the
+//! desired results working no matter the UI element is physically located
+//! in the view tree.
+//!
+//! In other words, this is the jack of all trades implementation, and will
+//! not function as the optimized implementation for all cases.
 use leptos::prelude::*;
 
 #[cfg(feature = "ssr")]
 use crate::Ready;
 
+/// A generic portlet context.
+///
+/// Internally, this contains an `ArcResource` that will be provided as a
+/// context throughout a typical Leptos `App`, and a refresh signal to
+/// indicate when a refresh is required, e.g. after a new resource has been
+/// set or have been cleared.  The usage of a resource informs Leptos that
+/// additional asynchronous waiting could be done, and to allow passing of
+/// raw resource definitions into here.
 #[derive(Clone, Debug, Default)]
 pub struct PortletCtx<T, E = ServerFnError> {
     inner: Option<ArcResource<Result<T, E>>>,
@@ -20,8 +48,10 @@ where
         + IntoRender
         + 'static,
 {
-    /// Clear the resource in the portlet.  The component using this
-    /// may decide to not render anything.
+    /// Clears the resource for the portlet.
+    ///
+    /// Coupled with the [`render_portlet`] function, upon invocation of
+    /// this method, the rendering of the portlet will be `None`.
     pub fn clear(&mut self) {
         // leptos::logging::log!("PortletCtx clear");
         self.refresh.try_update(|n| *n += 1);
@@ -29,12 +59,17 @@ where
     }
 
     /// Set the resource for this portlet.
-    pub fn set(&mut self, value: ArcResource<Result<T, ServerFnError>>) {
+    ///
+    /// This would assign an `ArcResource` that will ultimately provide
+    /// a value of type `Result<T, E>`.
+    pub fn set(&mut self, value: ArcResource<Result<T, E>>) {
         // leptos::logging::log!("PortletCtx set");
         self.refresh.try_update(|n| *n += 1);
         self.inner = Some(value);
     }
 
+    /// Provide this as a context for a Leptos `App`.
+    ///
     /// The reason why there is no constructor provided and only done so
     /// via signal is to have these contexts function as a singleton.
     pub fn provide() {
@@ -51,6 +86,24 @@ where
     }
 }
 
+/// A generic portlet renderer using the generic portlet context.
+///
+/// This renderer simplifies the creation of portlet components based
+/// upon the underlying `T`, for all `T` that implements `IntoRender`.
+/// For usage in a Leptos `App`, it expects that the [`PortletCtx<T>`]
+/// be [provided](PortletCtx::provide) as `ArcReadSignal<PortletCtx<T>>`.
+/// The implementation would ensure the resource assignment will be
+/// waited upon before usage, if the component invoking this has one
+/// [`SyncSsr`](crate::component::SyncSsr) up its view tree.
+///
+/// Typical usage may look like this.
+///
+/// ```
+/// #[component]
+/// pub fn NavPortlet() -> impl IntoView {
+///     render_portlet::<Nav>()
+/// }
+/// ```
 pub fn render_portlet<T>() -> impl IntoView
 where
     T: serde::Serialize
