@@ -332,7 +332,7 @@ pub fn AuthorTop() -> impl IntoView {
     ));
 
     let resource = expect_context::<Resource<Result<Vec<(String, Author)>, ServerFnError>>>();
-    let ws = expect_context::<ArcWriteSignal<NavPortletCtx>>();
+    let ws = NavPortletCtx::expect_write();
     on_cleanup({
         let ws = ws.clone();
         // cleanup in an effect somehow functions as a delay to prevent reposition
@@ -471,7 +471,7 @@ pub fn ArticleTop() -> impl IntoView {
     ));
 
     let resource = expect_context::<Resource<Result<Vec<(u32, Article)>, ServerFnError>>>();
-    let ws = expect_context::<ArcWriteSignal<NavPortletCtx>>();
+    let ws = NavPortletCtx::expect_write();
     on_cleanup({
         let ws = ws.clone();
         move || {

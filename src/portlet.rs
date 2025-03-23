@@ -45,6 +45,10 @@ where
         provide_context(rs);
         provide_context(ws);
     }
+
+    pub fn expect_write() -> ArcWriteSignal<PortletCtx<T>> {
+        expect_context::<ArcWriteSignal<PortletCtx<T>>>()
+    }
 }
 
 pub fn render_portlet<T>() -> impl IntoView
