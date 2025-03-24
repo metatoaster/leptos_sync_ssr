@@ -1,6 +1,6 @@
 #[cfg(feature = "ssr")]
 mod ssr {
-    pub use leptos::context::{provide_context, use_context};
+    pub use leptos::context::use_context;
     pub use std::sync::{Arc, RwLock};
     pub use tokio::sync::broadcast::{channel, Receiver, Sender};
 }
@@ -157,25 +157,54 @@ impl Ready {
     pub(crate) fn new() -> Ready {
         let (sender, _) = channel(1);
         let resolved = RwLock::new(false);
-        let ready = Ready {
+        Ready {
             inner: ReadyInner { sender, resolved }.into(),
             _phantom: Message,
-        };
-        provide_context(ready.clone());
-        ready
+        }
     }
 
     pub(crate) fn complete(&self) {
         *self.inner.resolved.write().unwrap() = true;
         let _ = self.inner.sender.send(Message);
         // TODO if we were to provide a tracing feature...
-        // if let Ok(_) = ready.inner.sender.send(Message) {
+        // if let Ok(_) = self.inner.sender.send(Message) {
         //     leptos::logging::log!(
         //         "broadcasted complete to {} subscribers",
-        //         ready.inner.sender.receiver_count(),
+        //         self.inner.sender.receiver_count(),
         //     );
         // } else {
         //     leptos::logging::log!("no subscribers available to receive completion");
         // }
+    }
+}
+
+#[cfg(feature = "ssr")]
+mod debug {
+    use std::fmt;
+    use super::*;
+
+    impl fmt::Debug for Ready {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("Ready")
+                .field("resolved", &self.inner.resolved.read())
+                .field("subscribers", &self.inner.sender.receiver_count())
+                .finish()
+        }
+    }
+
+    impl fmt::Debug for ReadyHandle {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("ReadyHandle")
+                .field("inner", &self.inner)
+                .finish()
+        }
+    }
+
+    impl fmt::Debug for ReadySubscription {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("ReadySubscription")
+                .field("ready", &self.inner.as_ref().map(|v| v.ready.clone()))
+                .finish()
+        }
     }
 }
