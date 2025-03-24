@@ -1,0 +1,12 @@
+[tasks.test-ui]
+command = "cargo"
+args = [
+    "test",
+    "--test",
+    "app_suite",
+    "--",
+    "--retry",
+    "9",
+    "--fail-fast",
+    "${@}",
+]

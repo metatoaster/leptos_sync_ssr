@@ -37,7 +37,7 @@ async fn server_call() -> Result<(), ServerFnError> {
 
 #[component]
 pub fn App() -> impl IntoView {
-    leptos::logging::log!(">>>>>>>>>>>>>>>>>>>>>>>>");
+    // leptos::logging::log!(">>>>>>>>>>>>>>>>>>>>>>>>");
     provide_meta_context();
     let fallback = || view! { "Page not found." }.into_view();
     view! {
@@ -96,19 +96,19 @@ pub fn UsingSignal(
             // #[cfg(feature = "ssr")]
             let ready = ready.clone();
             async move {
-                leptos::logging::log!("preparing to subscribe and wait");
+                // leptos::logging::log!("preparing to subscribe and wait");
                 // #[cfg(feature = "ssr")]
                 ready.subscribe().wait().await;
-                leptos::logging::log!("subscription finished waiting");
+                // leptos::logging::log!("subscription finished waiting");
                 let value = if let Some(Some(res)) = rs.try_get() {
-                    leptos::logging::log!("readsignal has OnceResource");
+                    // leptos::logging::log!("readsignal has OnceResource");
                     let result = Some(res.await);
-                    leptos::logging::log!("finished awaiting for OnceResource");
+                    // leptos::logging::log!("finished awaiting for OnceResource");
                     result
                 } else {
                     None
                 };
-                leptos::logging::log!("value: {value:?}");
+                // leptos::logging::log!("value: {value:?}");
                 value
             }
         },
@@ -119,18 +119,18 @@ pub fn UsingSignal(
             " accessing the resource for the value from signal: "
             <Suspense>{
                 move || Suspend::new(async move {
-                    leptos::logging::log!("Inside suspense");
+                    // leptos::logging::log!("Inside suspense");
                     let result = if let Some(value) = value.await {
-                        leptos::logging::log!("value.await got Some");
+                        // leptos::logging::log!("value.await got Some");
                         Some(view! {
-                            <strong>{value}</strong>
+                            <strong id="target">{value}</strong>
                         }
                         .into_any())
                     } else {
-                        leptos::logging::log!("value.await got None");
+                        // leptos::logging::log!("value.await got None");
                         None
                     };
-                    leptos::logging::log!("Suspense rendered");
+                    // leptos::logging::log!("Suspense rendered");
                     result
                 })
             }</Suspense>
@@ -144,7 +144,7 @@ pub fn SettingSignal(
     ws: WriteSignal<Option<OnceResource<String>>>,
 ) -> impl IntoView {
     on_cleanup(move || {
-        leptos::logging::log!("Running on_cleanup");
+        // leptos::logging::log!("Running on_cleanup");
         ws.try_set(None);
     });
 
