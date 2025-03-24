@@ -64,4 +64,7 @@ pub mod component;
 pub mod portlet;
 mod ready;
 
+#[cfg(test)]
+mod tests;
+
 pub use ready::{Ready, ReadyHandle, ReadySubscription};

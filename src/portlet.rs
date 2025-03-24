@@ -81,6 +81,10 @@ where
         provide_context(ws);
     }
 
+    /// Acquire via `expect_context` the write signal for this.
+    ///
+    /// Using this associated function will ensure the correct write
+    /// signal will be returned.
     pub fn expect_write() -> ArcWriteSignal<PortletCtx<T>> {
         expect_context::<ArcWriteSignal<PortletCtx<T>>>()
     }
@@ -99,6 +103,26 @@ where
 /// Typical usage may look like this.
 ///
 /// ```
+/// # use leptos::{
+/// #     prelude::{AnyView, IntoAny, IntoRender},
+/// #     component, view, IntoView,
+/// # };
+/// # use leptos_sync_ssr::portlet::render_portlet;
+/// #
+/// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+/// # struct Nav;
+/// #
+/// # impl IntoRender for Nav {
+/// #     type Output = AnyView;
+/// #
+/// #     fn into_render(self) -> Self::Output {
+/// #         view! {
+/// #             todo!()
+/// #         }
+/// #         .into_any()
+/// #     }
+/// # }
+/// #
 /// #[component]
 /// pub fn NavPortlet() -> impl IntoView {
 ///     render_portlet::<Nav>()

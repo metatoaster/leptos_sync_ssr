@@ -29,6 +29,10 @@ use crate::ready::Ready;
 ///
 /// ```
 /// use leptos::prelude::*;
+/// use leptos_router::{
+///     components::{Route, Router, Routes},
+///     path, MatchNestedRoutes,
+/// };
 /// use leptos_sync_ssr::component::SyncSsr;
 ///
 /// #[component]
@@ -42,7 +46,7 @@ use crate::ready::Ready;
 ///             </nav>
 ///             <SyncSsr>
 ///                 <Breadcrumbs/>
-///                 <Routes fallback>
+///                 <Routes fallback=|| ()>
 ///                     <Route path=path!("") view=HomePage/>
 ///                     <AuthorRoutes/>
 ///                     <ArticleRoutes/>
@@ -51,6 +55,32 @@ use crate::ready::Ready;
 ///         </Router>
 ///     }
 /// }
+/// #
+/// # #[component]
+/// # fn HomePage() -> impl IntoView {
+/// #     ()
+/// # }
+/// #
+/// # #[component]
+/// # fn Breadcrumbs() -> impl IntoView {
+/// #     ()
+/// # }
+/// #
+/// # #[component]
+/// # pub fn ArticleRoutes() -> impl MatchNestedRoutes + Clone {
+/// #     view! {
+/// #         <Route path=path!("") view=HomePage/>
+/// #     }
+/// #     .into_inner()
+/// # }
+/// #
+/// # #[component]
+/// # pub fn AuthorRoutes() -> impl MatchNestedRoutes + Clone {
+/// #     view! {
+/// #         <Route path=path!("") view=HomePage/>
+/// #     }
+/// #     .into_inner()
+/// # }
 /// ```
 ///
 /// In the above example, both `<Routes>` and `<Breadcrumbs>` are
