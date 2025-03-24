@@ -8,7 +8,7 @@
 //! implements the most conservative execution path that will cater to any
 //! valid positions in the view tree.
 //!
-//! For the most simple case, a simple `RwSignal` with a simple direct
+//! For the most simple case, a simple [`RwSignal`] with a simple direct
 //! rendering may be all that is required.  This, much more convoluted
 //! implementation is really only required if you don't know where exactly
 //! where the element will ultimately placed in the view tree, but you just
@@ -25,7 +25,7 @@ use crate::Ready;
 
 /// A generic portlet context.
 ///
-/// Internally, this contains an `ArcResource` that will be provided as a
+/// Internally, this contains an [`ArcResource`] that will be provided as a
 /// context throughout a typical Leptos `App`, and a refresh signal to
 /// indicate when a refresh is required, e.g. after a new resource has been
 /// set or have been cleared.  The usage of a resource informs Leptos that
@@ -81,7 +81,7 @@ where
         provide_context(ws);
     }
 
-    /// Acquire via `expect_context` the write signal for this.
+    /// Acquire via [`expect_context`] the write signal for this.
     ///
     /// Using this associated function will ensure the correct write
     /// signal will be returned.

@@ -55,3 +55,16 @@ main > aside > section > nav > a:hover {
 main > aside > section > nav > a[aria-current] {
     background: #eee;
 }
+
+div#notice {
+    display: none;
+}
+
+div#notice.panicked {
+    position: sticky;
+    top: 0;
+    margin: 0;
+    padding: 0.5em;
+    border-bottom: 2px solid #f00;
+    display: block;
+}

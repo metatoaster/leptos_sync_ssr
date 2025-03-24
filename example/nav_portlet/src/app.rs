@@ -211,6 +211,10 @@ pub fn App() -> impl IntoView {
         <Meta name="color-scheme" content="dark light"/>
         <Router>
             <header>
+                <div id="notice">
+                    "This WASM application has panicked, please refer to the console log for details. "
+                    <a href="/" target="_self">"Use this link to restart the application"</a>"."
+                </div>
                 <nav>
                     <A href="/">"Home"</A>
                     <A href="/author/">"Authors"</A>
