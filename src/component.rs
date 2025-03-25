@@ -1,3 +1,4 @@
+//! Provides the [`SyncSsr`] component.
 #[cfg(feature = "ssr")]
 mod ssr {
     pub use leptos::{context::Provider, view};
