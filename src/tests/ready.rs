@@ -3,8 +3,8 @@ use std::time::Duration;
 use reactive_graph::owner::provide_context;
 use tokio::time::timeout;
 
-use crate::Ready;
 use super::set_reactive_owner;
+use crate::Ready;
 
 #[tokio::test]
 async fn timeout_from_incomplete() -> anyhow::Result<()> {
@@ -17,7 +17,8 @@ async fn timeout_from_incomplete() -> anyhow::Result<()> {
     let subscription = handle.subscribe();
 
     let task = tokio::spawn(async move {
-        timeout(Duration::from_millis(100), subscription.wait()).await
+        timeout(Duration::from_millis(100), subscription.wait())
+            .await
             .expect_err("subscription.wait() shouldn't return here");
     });
     task.await?;
@@ -56,7 +57,8 @@ async fn wait_before_ready() -> anyhow::Result<()> {
     let subscription = handle.subscribe();
 
     let handle = tokio::spawn(async move {
-        timeout(Duration::from_millis(100), subscription.wait()).await
+        timeout(Duration::from_millis(100), subscription.wait())
+            .await
             .expect("subscription.wait() should not have timed out");
     });
     tokio::spawn(async move {
@@ -73,7 +75,8 @@ async fn without_context_no_waiting() -> anyhow::Result<()> {
     let subscription = handle.subscribe();
 
     let task = tokio::spawn(async move {
-        timeout(Duration::from_millis(100), subscription.wait()).await
+        timeout(Duration::from_millis(100), subscription.wait())
+            .await
             .expect("subscription.wait() shouldn't wait here");
     });
     task.await?;

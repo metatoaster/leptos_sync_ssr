@@ -6,10 +6,7 @@ mod ssr {
 #[cfg(feature = "ssr")]
 use ssr::*;
 
-use leptos::{
-    children::Children,
-    IntoView, component,
-};
+use leptos::{children::Children, component, IntoView};
 
 #[cfg(feature = "ssr")]
 use crate::ready::Ready;

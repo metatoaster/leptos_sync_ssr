@@ -28,7 +28,7 @@ fn Indicator() -> impl IntoView {
                     None
                 }
             }
-        }
+        },
     );
 
     view! {
@@ -46,14 +46,15 @@ fn Indicator() -> impl IntoView {
 #[component]
 fn Setter() -> impl IntoView {
     let ws = expect_context::<WriteSignal<Option<OnceResource<String>>>>();
-    let hook = move || ws.set(Some(OnceResource::new(async move {
-        "hello world".to_string()
-    })));
+    let hook = move || {
+        ws.set(Some(OnceResource::new(
+            async move { "hello world".to_string() },
+        )))
+    };
     view! {
         {hook}
         <p>"Wrote 'hello world'"</p>
     }
-
 }
 
 #[component]

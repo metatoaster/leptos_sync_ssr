@@ -9,7 +9,7 @@ mod ssr {
 use ssr::*;
 
 #[derive(Clone)]
-struct Message;  // also functions as a private phantom
+struct Message; // also functions as a private phantom
 
 /// The coordinator provided as a context by the [`SyncSsr`](
 /// crate::component::SyncSsr) component.
@@ -107,8 +107,7 @@ impl ReadyHandle {
 
 #[cfg(not(feature = "ssr"))]
 impl ReadySubscription {
-    pub fn wait(self) -> impl std::future::Future<Output = ()> {
-        async {}
+    pub async fn wait(self) {
     }
 }
 
@@ -180,8 +179,8 @@ impl Ready {
 
 #[cfg(feature = "ssr")]
 mod debug {
-    use std::fmt;
     use super::*;
+    use std::fmt;
 
     impl fmt::Debug for Ready {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
