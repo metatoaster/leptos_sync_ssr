@@ -107,8 +107,7 @@ impl ReadyHandle {
 
 #[cfg(not(feature = "ssr"))]
 impl ReadySubscription {
-    pub async fn wait(self) {
-    }
+    pub async fn wait(self) {}
 }
 
 #[cfg(feature = "ssr")]
