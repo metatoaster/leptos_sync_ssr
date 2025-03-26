@@ -52,3 +52,13 @@ async fn i_will_not_find_the_following_links_anywhere(
     }
     Ok(())
 }
+
+#[then(regex = "^I can see the entity id is (.*)$")]
+async fn i_can_see_the_entity_id_is(
+    world: &mut AppWorld,
+    text: String,
+) -> Result<()> {
+    let client = &world.client;
+    check::text_at_id_is(client, "info_id", &text).await?;
+    Ok(())
+}

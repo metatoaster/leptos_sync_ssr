@@ -18,6 +18,7 @@ pub struct Author {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct Article {
+    pub id: u32,
     pub author_name: String,
     pub title: String,
 }
@@ -36,9 +37,10 @@ pub(super) mod server {
         }
     }
 
-    impl From<(&'static str, &'static str)> for Article {
-        fn from((author_name, title): (&'static str, &'static str)) -> Self {
+    impl From<(u32, &'static str, &'static str)> for Article {
+        fn from((id, author_name, title): (u32, &'static str, &'static str)) -> Self {
             Article {
+                id,
                 author_name: author_name.to_string(),
                 title: title.to_string(),
             }
@@ -56,19 +58,22 @@ pub(super) mod server {
         ])
     });
 
-    pub static ARTICLES: LazyLock<Vec<Article>> = LazyLock::new(|| {
-        vec![
-            ("dorothy", "The top twenty...").into(),
-            ("albert", "On the practical nature of...").into(),
-            ("bethany", "How to guide to...").into(),
-            ("dorothy", "The top ten...").into(),
-            ("albert", "Why a city's infrastructure...").into(),
-            ("bethany", "The ultimate guide to...").into(),
-            ("dorothy", "The top hundred...").into(),
-            ("carl", "A quick summary on...").into(),
-            ("dorothy", "The top thousand...").into(),
-            ("bethany", "Beware of...").into(),
+    pub static ARTICLES: LazyLock<HashMap<u32, Article>> = LazyLock::new(|| {
+        [
+            (1, "dorothy", "The top twenty...").into(),
+            (2, "albert", "On the practical nature of...").into(),
+            (3, "bethany", "How to guide to...").into(),
+            (4, "dorothy", "The top ten...").into(),
+            (5, "albert", "Why a city's infrastructure...").into(),
+            (6, "bethany", "The ultimate guide to...").into(),
+            (7, "dorothy", "The top hundred...").into(),
+            (8, "carl", "A quick summary on...").into(),
+            (9, "dorothy", "The top thousand...").into(),
+            (10, "bethany", "Beware of...").into(),
         ]
+        .into_iter()
+        .map(|article: Article| (article.id, article))
+        .collect::<HashMap<_, _>>()
     });
 }
 
@@ -133,6 +138,45 @@ pub mod navigation {
 
 use navigation::*;
 
+pub mod info {
+    use super::*;
+    use leptos_sync_ssr::portlet::PortletCtx;
+
+    #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+    pub struct Info {
+        pub entity: String,
+        pub id: String,
+    }
+
+    pub type InfoPortletCtx = PortletCtx<Info>;
+
+    impl IntoRender for Info {
+        type Output = AnyView;
+
+        fn into_render(self) -> Self::Output {
+            view! {
+                <section id="Info">
+                    <heading>"Info"</heading>
+                    <dl>
+                        <dt>"Entity"</dt>
+                        <dd id="info_entity">{self.entity}</dd>
+                        <dt>"id"</dt>
+                        <dd id="info_id">{self.id}</dd>
+                    </dl>
+                </section>
+            }
+            .into_any()
+        }
+    }
+
+    #[component]
+    pub fn InfoPortlet() -> impl IntoView {
+        InfoPortletCtx::render()
+    }
+}
+
+use info::*;
+
 pub fn shell(options: LeptosOptions) -> impl IntoView {
     // leptos::logging::log!(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
     view! {
@@ -173,27 +217,29 @@ async fn get_author(name: String) -> Result<(String, Author), ServerFnError> {
 #[server]
 async fn list_articles() -> Result<Vec<(u32, Article)>, ServerFnError> {
     tokio::time::sleep(std::time::Duration::from_millis(TIMEOUT)).await;
-    Ok((1..)
-        .zip(ARTICLES.iter())
-        .map(|(id, article)| (id, article.clone()))
+    Ok(ARTICLES
+        .iter()
+        .map(|(k, article)| (k.to_owned(), article.clone()))
         .collect::<Vec<_>>())
 }
 
 #[server]
 async fn list_articles_by_author(name: String) -> Result<Vec<(u32, Article)>, ServerFnError> {
     tokio::time::sleep(std::time::Duration::from_millis(TIMEOUT)).await;
-    Ok((1..)
-        .zip(ARTICLES.iter())
-        .filter_map(|(id, article)| (article.author_name == name).then(|| (id, article.clone())))
+    Ok(ARTICLES
+        .iter()
+        .filter_map(|(id, article)| {
+            (article.author_name == name).then(|| (id.to_owned(), article.clone()))
+        })
         .collect::<Vec<_>>())
 }
 
 #[server]
 async fn get_article(id: u32) -> Result<Article, ServerFnError> {
     tokio::time::sleep(std::time::Duration::from_millis(TIMEOUT)).await;
-    id.checked_sub(1)
-        .map(|idx| ARTICLES.get(idx as usize).map(Article::clone))
-        .flatten()
+    ARTICLES
+        .get(&id)
+        .map(Article::clone)
         .ok_or_else(|| ServerFnError::ServerError(format!("no such article: {id}")))
 }
 
@@ -203,6 +249,7 @@ pub fn App() -> impl IntoView {
     provide_meta_context();
     // provide_field_nav_portlet_context();
     NavPortletCtx::provide();
+    InfoPortletCtx::provide();
     let fallback = || view! { "Page not found." }.into_view();
 
     view! {
@@ -225,6 +272,7 @@ pub fn App() -> impl IntoView {
                 <main>
                     <aside>
                         <NavPortlet/>
+                        <InfoPortlet/>
                     </aside>
                     <article>
                         <Routes fallback>
@@ -336,19 +384,30 @@ pub fn AuthorTop() -> impl IntoView {
     ));
 
     let resource = expect_context::<Resource<Result<Vec<(String, Author)>, ServerFnError>>>();
-    let ws = NavPortletCtx::expect_write();
+    let nav_ws = NavPortletCtx::expect_write();
+    let info_ws = InfoPortletCtx::expect_write();
     on_cleanup({
-        let ws = ws.clone();
+        let nav_ws = nav_ws.clone();
+        let info_ws = info_ws.clone();
         // cleanup in an effect somehow functions as a delay to prevent reposition
         // when unmounting one navigation and be replaced with another.
         move || {
             Effect::new(move || {
                 // leptos::logging::log!("Running cleanup of porlet for AuthorTop");
-                ws.update(|c| c.clear());
+                nav_ws.update(|c| c.clear());
+                info_ws.update(|c| c.clear());
             });
         }
     });
-    ws.update(move |c| {
+    // Using the write signal to set the resource directly like so will
+    // actaully result in the underlying resource being non-reactive, as
+    // this is a barrier to signal propagation.
+    //
+    // That said, this navigation portlet will appear to be reactive,
+    // however, this is simply coincidental as the resource underlying
+    // will not get updated to provide new data, but not so for the next
+    // one.
+    nav_ws.update(move |c| {
         // leptos::logging::log!("Updating resource for AuthorTop");
         c.set(ArcResource::new_blocking(
             || (),
@@ -367,7 +426,28 @@ pub fn AuthorTop() -> impl IntoView {
         ))
     });
 
+    let resource = expect_context::<Resource<Result<(String, Author), ServerFnError>>>();
+    // in order to reflect the reactivity of the underlying resource, a
+    // function must be used for setting of the resource through the
+    // write signal, and underlying resource(s) must be tracked manually
+    // here to preserve reactivity of the portlet.
+    let portlet = move || {
+        resource.track();
+        info_ws.update(move |c| {
+            c.set(ArcResource::new_blocking(
+                || (),
+                move |_| async move {
+                    resource.await.map(|(id, _)| Info {
+                        entity: "Author".to_string(),
+                        id,
+                    })
+                },
+            ))
+        });
+    };
+
     view! {
+        {portlet}
         <h3>"<AuthorTop/>"</h3>
         <Outlet/>
     }
@@ -380,7 +460,7 @@ pub fn AuthorOverview() -> impl IntoView {
         Suspend::new(async move {
             resource.await.map(move |(id, author)| {
                 view! {
-                    <dl>
+                    <dl id="author-overview">
                         <dt>"ID:"</dt>
                         <dd>{id}</dd>
                         <dt>"Name:"</dt>
@@ -475,17 +555,21 @@ pub fn ArticleTop() -> impl IntoView {
     ));
 
     let resource = expect_context::<Resource<Result<Vec<(u32, Article)>, ServerFnError>>>();
-    let ws = NavPortletCtx::expect_write();
+    let nav_ws = NavPortletCtx::expect_write();
+    let info_ws = InfoPortletCtx::expect_write();
     on_cleanup({
-        let ws = ws.clone();
+        let nav_ws = nav_ws.clone();
+        let info_ws = info_ws.clone();
         move || {
             Effect::new(move || {
                 // leptos::logging::log!("Running cleanup of porlet for ArticleTop");
-                ws.update(|c| c.clear());
+                nav_ws.update(|c| c.clear());
+                info_ws.update(|c| c.clear());
             });
         }
     });
-    ws.update(move |c| {
+    // See the `nav_ws.update` call in AuthorTop for a detailed explanation.
+    nav_ws.update(move |c| {
         // leptos::logging::log!("Updating resource for ArticleTop");
         c.set(ArcResource::new_blocking(
             || (),
@@ -503,7 +587,24 @@ pub fn ArticleTop() -> impl IntoView {
             },
         ))
     });
+
+    let resource = expect_context::<Resource<Result<Article, ServerFnError>>>();
+    let portlet = move || {
+        resource.track();
+        info_ws.update(move |c| {
+            c.set(ArcResource::new_blocking(
+                || (),
+                move |_| async move {
+                    resource.await.map(|article| Info {
+                        entity: "Article".to_string(),
+                        id: article.id.to_string(),
+                    })
+                },
+            ))
+        });
+    };
     view! {
+        {portlet}
         <h3>"<ArticleTop/>"</h3>
         <Outlet/>
     }
@@ -517,7 +618,7 @@ pub fn ArticleView() -> impl IntoView {
             resource.await.map(move |article| {
                 let author_href = format!("/author/{}/", article.author_name);
                 view! {
-                    <dl>
+                    <dl id="article-view">
                         <dt>"Title:"</dt>
                         <dd>{article.title}</dd>
                         <dt>"Author:"</dt>

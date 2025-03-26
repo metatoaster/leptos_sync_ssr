@@ -1,4 +1,4 @@
-use crate::fixtures::{action, world::AppWorld};
+use crate::fixtures::{action, find, world::AppWorld};
 use anyhow::{Ok, Result};
 use cucumber::{given, when, gherkin::Step};
 
@@ -36,5 +36,19 @@ async fn i_access_the_following_links(
             action::click_link(client, &row[0]).await?;
         }
     }
+    Ok(())
+}
+
+#[when(regex = "^once I see the article view is populated$")]
+async fn once_i_see_the_article_view_is_populated(world: &mut AppWorld) -> Result<()> {
+    let client = &world.client;
+    find::element_at_id(client, "article-view").await?;
+    Ok(())
+}
+
+#[when(regex = "^once I see the author overview is populated$")]
+async fn once_i_see_the_author_overview_is_populated(world: &mut AppWorld) -> Result<()> {
+    let client = &world.client;
+    find::element_at_id(client, "author-overview").await?;
     Ok(())
 }

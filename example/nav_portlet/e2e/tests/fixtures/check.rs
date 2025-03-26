@@ -2,6 +2,16 @@ use crate::fixtures::find;
 use anyhow::{Ok, Result};
 use fantoccini::{Client, Locator};
 
+pub async fn text_at_id_is(
+    client: &Client,
+    id: &str,
+    expected: &str,
+) -> Result<()> {
+    let actual = find::text_at_id(client, id).await?;
+    assert_eq!(&actual, expected);
+    Ok(())
+}
+
 pub async fn id_is_invisible(
     client: &Client,
     id: &str,

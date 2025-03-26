@@ -20,7 +20,7 @@ Feature: The navigation portlet is in fact reactive
             | A quick summary on...          |
             | The top thousand...            |
             | Beware of...                   |
-        And I will not find the following links under Navigation
+        But I will not find the following links under Navigation
             | Albert                  |
             | Bethany                 |
             | Carl                    |
@@ -38,8 +38,26 @@ Feature: The navigation portlet is in fact reactive
             | Bethany                 |
             | Carl                    |
             | Dorothy                 |
-        And I will not find the following links under Navigation
+        But I will not find the following links under Navigation
             | The top twenty...              |
             | On the practical nature of...  |
             | How to guide to...             |
             | The top ten...                 |
+
+    Scenario: Navigating between authors, the info is reactive
+        Given I see the app
+        When I access the following links in the following order
+            | Authors                 |
+            | Bethany                 |
+            | Dorothy                 |
+        And once I see the author overview is populated
+        Then I can see the entity id is dorothy
+
+    Scenario: Navigating between articles, the info is reactive
+        Given I see the app
+        When I access the following links in the following order
+            | Articles           |
+            | How to guide to... |
+            | The top ten...     |
+        And once I see the article view is populated
+        Then I can see the entity id is 4

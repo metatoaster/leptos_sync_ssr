@@ -166,7 +166,7 @@ where
                     // leptos::logging::log!("refresh id {id}");
                     #[cfg(feature = "ssr")]
                     ready.subscribe().wait().await;
-                    let ctx = rs.get();
+                    let ctx = rs.get_untracked();
                     // leptos::logging::log!("portlet_ctx.inner = {:?}", ctx.inner);
                     // let result = if let Some(resource) = ctx.inner {
                     if let Some(resource) = ctx.inner {

@@ -9,6 +9,14 @@ pub async fn element_at_id(client: &Client, id: &str) -> Result<Element> {
         .map_err(|_| anyhow!("no such id: `{}`", id))
 }
 
+pub async fn text_at_id(client: &Client, id: &str) -> Result<String> {
+    let text = element_at_id(client, id)
+        .await?
+        .text()
+        .await?;
+    Ok(text)
+}
+
 pub async fn link_with_text(client: &Client, text: &str) -> Result<Element> {
     client
         .wait()
