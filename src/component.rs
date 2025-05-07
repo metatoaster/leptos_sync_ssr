@@ -1,13 +1,13 @@
 //! Provides the [`SyncSsr`] component.
+use leptos::{children::Children, component, view, IntoView};
+
 #[cfg(feature = "ssr")]
 mod ssr {
-    pub use leptos::{context::Provider, view};
+    pub use leptos::context::Provider;
 }
 
 #[cfg(feature = "ssr")]
 use ssr::*;
-
-use leptos::{children::Children, component, IntoView};
 
 #[cfg(feature = "ssr")]
 use crate::ready::Ready;
@@ -110,7 +110,10 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
     };
 
     #[cfg(not(feature = "ssr"))]
-    let result = children();
+    let result = view! {
+        {children()}
+        {}
+    };
 
     result
 }
