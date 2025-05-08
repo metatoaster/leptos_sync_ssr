@@ -126,53 +126,62 @@ impl ReadySubscription {
     /// will return immediately, otherwise it will wait for the ready
     /// message to arrive until execution will be allowed to continue.
     pub async fn wait(mut self) {
-        if let Some(mut inner) = self.inner.take() {
-            inner
-                .receiver
-                .wait_for(|v| *v == true)
-                .await
-                .expect("internal error: sender not properly managed");
-            // XXX a 0 duration sleep seems to be required to mitigate
-            // an issue where Suspend doesn't wake up after the resource
-            // runs this async method, and this path does not have an
-            // await seems to cause the issue.
-            //
-            // Initial thought was to try a mitigation using a simple
-            // `async {}.await`, however that does not work, and hence
-            // the 0 duration sleep.
-            //
-            // Without this workaround in place, in roughly 1 in 200
-            // requests it would not complete and thus the client will
-            // see a timeout.  With the mitigation in place, the same
-            // tight loop running in 5 different threads making 20000
-            // requests may see in total 1 to 2 timeouts triggered.
-            // However, this test also revealed that there are still
-            // other unaccounted issues with SSR as there are transfer
-            // size variations seen, but rate of occurrence is about 7
-            // to 8 in 100000 from that benchmark, for a total failure
-            // rate of about 0.01%.  The above is derived using the
-            // simple example on the `http://localhost:3000/fixed`
-            // endpoint.
-            //
-            // Subsequent to switching the channel from broadcast to
-            // watch, and upgrading to leptos-0.8.0, the sleep is still
-            // required in this form as without the sleep, the following
-            // panick may also happen:
-            //
-            //     panicked at reactive_graph-0.2.2/src/owner/arena.rs:53:17:
-            //     reactive_graph-0.2.2/src/owner/arena.rs:56:21,
-            //     the `sandboxed-arenas` feature is active, but no Arena is
-            //     active
-            //
-            // Hence the underlying issue may in fact be upstream, but this
-            // sleep is a sufficient mitigation.
-            //
-            // As for the underlying issue, they are filed at:
-            //
-            // - https://github.com/leptos-rs/leptos/issues/3699
-            // - https://github.com/leptos-rs/leptos/issues/3729
-            tokio::time::sleep(std::time::Duration::from_millis(0)).await;
+        if let Some(inner) = self.inner.take() {
+            inner.wait_inner().await
         }
+    }
+}
+
+#[cfg(feature = "ssr")]
+impl ReadySubscriptionInner {
+    async fn wait_inner(mut self) {
+        self
+            .receiver
+            .wait_for(|v| *v == true)
+            .await
+            .expect("internal error: sender not properly managed");
+        // XXX a 0 duration sleep seems to be required to mitigate
+        // an issue where Suspend doesn't wake up after the resource
+        // runs this async method, and this path does not have an
+        // await seems to cause the issue.
+        //
+        // Initial thought was to try a mitigation using a simple
+        // `async {}.await`, however that does not work, and hence
+        // the 0 duration sleep.
+        //
+        // Without this workaround in place, in roughly 1 in 200
+        // requests it would not complete and thus the client will
+        // see a timeout.  With the mitigation in place, the same
+        // tight loop running in 5 different threads making 20000
+        // requests may see in total 1 to 2 timeouts triggered.
+        // However, this test also revealed that there are still
+        // other unaccounted issues with SSR as there are transfer
+        // size variations seen, but rate of occurrence is about 7
+        // to 8 in 100000 from that benchmark, for a total failure
+        // rate of about 0.01%.  The above is derived using the
+        // simple example on the `http://localhost:3000/fixed`
+        // endpoint under debug mode.  Under release mode, the failure
+        // rate roughly doubles (in terms of transfer size variance
+        // indicative of some form of hydration error/mismatch.
+        //
+        // Subsequent to switching the channel from broadcast to
+        // watch, and upgrading to leptos-0.8.0, the sleep is still
+        // required in this form as without the sleep, the following
+        // panick may also happen:
+        //
+        //     panicked at reactive_graph-0.2.2/src/owner/arena.rs:53:17:
+        //     reactive_graph-0.2.2/src/owner/arena.rs:56:21,
+        //     the `sandboxed-arenas` feature is active, but no Arena is
+        //     active
+        //
+        // Hence the underlying issue may in fact be upstream, but this
+        // sleep is a sufficient mitigation.
+        //
+        // As for the underlying issue, they are filed at:
+        //
+        // - https://github.com/leptos-rs/leptos/issues/3699
+        // - https://github.com/leptos-rs/leptos/issues/3729
+        tokio::time::sleep(std::time::Duration::from_millis(0)).await;
     }
 }
 
