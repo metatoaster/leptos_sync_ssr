@@ -53,7 +53,7 @@ pub struct ReadySubscription {
 }
 
 #[cfg(feature = "ssr")]
-struct ReadySubscriptionInner {
+pub(crate) struct ReadySubscriptionInner {
     ready: Ready,
     receiver: Receiver<bool>,
 }
@@ -83,14 +83,6 @@ impl Ready {
             #[cfg(feature = "ssr")]
             inner: use_context::<Ready>(),
             _phantom: Phantom,
-        }
-    }
-
-    #[cfg(feature = "ssr")]
-    fn subscribe_inner(&self) -> ReadySubscriptionInner {
-        ReadySubscriptionInner {
-            ready: self.clone(),
-            receiver: self.inner.sender.subscribe(),
         }
     }
 }
@@ -134,7 +126,7 @@ impl ReadySubscription {
 
 #[cfg(feature = "ssr")]
 impl ReadySubscriptionInner {
-    async fn wait_inner(mut self) {
+    pub(crate) async fn wait_inner(mut self) {
         self
             .receiver
             .wait_for(|v| *v == true)
@@ -206,6 +198,13 @@ impl Ready {
         // } else {
         //     leptos::logging::log!("no subscribers available to receive completion");
         // }
+    }
+
+    pub(crate) fn subscribe_inner(&self) -> ReadySubscriptionInner {
+        ReadySubscriptionInner {
+            ready: self.clone(),
+            receiver: self.inner.sender.subscribe(),
+        }
     }
 }
 
