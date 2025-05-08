@@ -86,6 +86,14 @@ impl Ready {
             _phantom: Message,
         }
     }
+
+    #[cfg(feature = "ssr")]
+    fn subscribe_inner(&self) -> ReadySubscriptionInner {
+        ReadySubscriptionInner {
+            ready: self.clone(),
+            receiver: self.inner.sender.subscribe(),
+        }
+    }
 }
 
 impl ReadyHandle {
@@ -96,10 +104,7 @@ impl ReadyHandle {
     pub fn subscribe(&self) -> ReadySubscription {
         ReadySubscription {
             #[cfg(feature = "ssr")]
-            inner: self.inner.clone().map(|ready| ReadySubscriptionInner {
-                ready: ready.clone(),
-                receiver: ready.inner.sender.subscribe(),
-            }),
+            inner: self.inner.as_ref().map(Ready::subscribe_inner),
             _phantom: Message,
         }
     }
