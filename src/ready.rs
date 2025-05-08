@@ -1,15 +1,15 @@
 #[cfg(feature = "ssr")]
 mod ssr {
     pub use leptos::context::use_context;
-    pub use std::sync::{Arc, RwLock};
-    pub use tokio::sync::broadcast::{channel, Receiver, Sender};
+    pub use std::sync::Arc;
+    pub use tokio::sync::watch::{channel, Receiver, Sender};
 }
 
 #[cfg(feature = "ssr")]
 use ssr::*;
 
 #[derive(Clone)]
-struct Message; // also functions as a private phantom
+struct Phantom;
 
 /// The coordinator provided as a context by the [`SyncSsr`](
 /// crate::component::SyncSsr) component.
@@ -25,13 +25,12 @@ struct Message; // also functions as a private phantom
 pub struct Ready {
     #[cfg(feature = "ssr")]
     inner: Arc<ReadyInner>,
-    _phantom: Message,
+    _phantom: Phantom,
 }
 
 #[cfg(feature = "ssr")]
 struct ReadyInner {
-    sender: Sender<Message>,
-    resolved: RwLock<bool>,
+    sender: Sender<bool>,
 }
 
 /// A handle to a possibly available [`Ready`] coordinator.
@@ -42,7 +41,7 @@ struct ReadyInner {
 pub struct ReadyHandle {
     #[cfg(feature = "ssr")]
     inner: Option<Ready>,
-    _phantom: Message,
+    _phantom: Phantom,
 }
 
 /// A subscription to the [`Ready`] coordinator, typically held by
@@ -50,13 +49,13 @@ pub struct ReadyHandle {
 pub struct ReadySubscription {
     #[cfg(feature = "ssr")]
     inner: Option<ReadySubscriptionInner>,
-    _phantom: Message,
+    _phantom: Phantom,
 }
 
 #[cfg(feature = "ssr")]
 struct ReadySubscriptionInner {
     ready: Ready,
-    receiver: Receiver<Message>,
+    receiver: Receiver<bool>,
 }
 
 impl Ready {
@@ -83,7 +82,7 @@ impl Ready {
         ReadyHandle {
             #[cfg(feature = "ssr")]
             inner: use_context::<Ready>(),
-            _phantom: Message,
+            _phantom: Phantom,
         }
     }
 
@@ -105,7 +104,7 @@ impl ReadyHandle {
         ReadySubscription {
             #[cfg(feature = "ssr")]
             inner: self.inner.as_ref().map(Ready::subscribe_inner),
-            _phantom: Message,
+            _phantom: Phantom,
         }
     }
 }
@@ -128,29 +127,51 @@ impl ReadySubscription {
     /// message to arrive until execution will be allowed to continue.
     pub async fn wait(mut self) {
         if let Some(mut inner) = self.inner.take() {
-            if !*inner.ready.inner.resolved.read().unwrap() {
-                inner
-                    .receiver
-                    .recv()
-                    .await
-                    .expect("internal error: sender not properly managed");
-            } else {
-                // XXX this 0 time sleep seems to be required to mitigate
-                // an issue where Suspend doesn't wake up after the resource
-                // runs this async method, and this path does not have an
-                // await seems to cause the issue.  However, it doesn't appear
-                // to be as simple as this as a simple `async {}.await` doesn't
-                // work.  Without this workaroud in place, in roughly 1 in 200
-                // requests it would not complete and thus the client will see
-                // a timeout.  With the mitigation in place, the same tight
-                // loop running in 5 different threads making 20000 requests
-                // may see in total 1 to 2 timeouts triggered.  However, this
-                // test also revealed that there are still other unaccounted
-                // issues with SSR as there are transfer size variations seen,
-                // but rate of occurrence is about 7 to 8 in 100000 from that
-                // benchmark, for a total failure rate of about 0.01%.
-                tokio::time::sleep(std::time::Duration::from_millis(0)).await;
-            }
+            inner
+                .receiver
+                .wait_for(|v| *v == true)
+                .await
+                .expect("internal error: sender not properly managed");
+            // XXX a 0 duration sleep seems to be required to mitigate
+            // an issue where Suspend doesn't wake up after the resource
+            // runs this async method, and this path does not have an
+            // await seems to cause the issue.
+            //
+            // Initial thought was to try a mitigation using a simple
+            // `async {}.await`, however that does not work, and hence
+            // the 0 duration sleep.
+            //
+            // Without this workaround in place, in roughly 1 in 200
+            // requests it would not complete and thus the client will
+            // see a timeout.  With the mitigation in place, the same
+            // tight loop running in 5 different threads making 20000
+            // requests may see in total 1 to 2 timeouts triggered.
+            // However, this test also revealed that there are still
+            // other unaccounted issues with SSR as there are transfer
+            // size variations seen, but rate of occurrence is about 7
+            // to 8 in 100000 from that benchmark, for a total failure
+            // rate of about 0.01%.  The above is derived using the
+            // simple example on the `http://localhost:3000/fixed`
+            // endpoint.
+            //
+            // Subsequent to switching the channel from broadcast to
+            // watch, and upgrading to leptos-0.8.0, the sleep is still
+            // required in this form as without the sleep, the following
+            // panick may also happen:
+            //
+            //     panicked at reactive_graph-0.2.2/src/owner/arena.rs:53:17:
+            //     reactive_graph-0.2.2/src/owner/arena.rs:56:21,
+            //     the `sandboxed-arenas` feature is active, but no Arena is
+            //     active
+            //
+            // Hence the underlying issue may in fact be upstream, but this
+            // sleep is a sufficient mitigation.
+            //
+            // As for the underlying issue, they are filed at:
+            //
+            // - https://github.com/leptos-rs/leptos/issues/3699
+            // - https://github.com/leptos-rs/leptos/issues/3729
+            tokio::time::sleep(std::time::Duration::from_millis(0)).await;
         }
     }
 }
@@ -158,19 +179,17 @@ impl ReadySubscription {
 #[cfg(feature = "ssr")]
 impl Ready {
     pub(crate) fn new() -> Ready {
-        let (sender, _) = channel(1);
-        let resolved = RwLock::new(false);
+        let (sender, _) = channel(false);
         Ready {
-            inner: ReadyInner { sender, resolved }.into(),
-            _phantom: Message,
+            inner: ReadyInner { sender }.into(),
+            _phantom: Phantom,
         }
     }
 
     pub(crate) fn complete(&self) {
-        *self.inner.resolved.write().unwrap() = true;
-        let _ = self.inner.sender.send(Message);
+        let _ = self.inner.sender.send(true);
         // TODO if we were to provide a tracing feature...
-        // if let Ok(_) = self.inner.sender.send(Message) {
+        // if let Ok(_) = self.inner.sender.send(true) {
         //     leptos::logging::log!(
         //         "broadcasted complete to {} subscribers",
         //         self.inner.sender.receiver_count(),
@@ -189,7 +208,7 @@ mod debug {
     impl fmt::Debug for Ready {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.debug_struct("Ready")
-                .field("resolved", &self.inner.resolved.read())
+                .field("resolved", &*self.inner.sender.borrow())
                 .field("subscribers", &self.inner.sender.receiver_count())
                 .finish()
         }
