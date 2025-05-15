@@ -117,3 +117,5 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
 
     result
 }
+
+// TODO add the provider for the CoReadyCoordinator

@@ -1,7 +1,7 @@
 #[cfg(feature = "ssr")]
 mod ssr {
     pub use leptos::context::use_context;
-    pub use std::sync::Arc;
+    pub use std::sync::{Arc, Mutex};
     pub use tokio::sync::watch::{channel, Receiver, Sender};
 }
 
@@ -11,8 +11,9 @@ use ssr::*;
 #[derive(Clone)]
 struct Phantom;
 
-/// The coordinator provided as a context by the [`SyncSsr`](
-/// crate::component::SyncSsr) component.
+/// Encapsulates the underlying ready state manager that may be provided
+/// as a context provided by the [`SyncSsr`](crate::component::SyncSsr)
+/// component.
 ///
 /// Under SSR, this contains a `Sender` that will be able to broadcast
 /// a message to all instances of actively waiting [`ReadySubscription`]
@@ -24,6 +25,26 @@ struct Phantom;
 #[derive(Clone)]
 pub struct Ready {
     #[cfg(feature = "ssr")]
+    pub(crate) inner: Arc<ReadyInner>,
+    _phantom: Phantom,
+}
+
+// TODO pub(crate)?  This probably should be managed much like the SyncSsr component?
+// a version of the ready state manager that will coordinate the ready states that this
+// manages, where there is a preparation stage and a fully ready to wait stage that this
+// will signal to all the underlying ready states that they are ready to proceed or not.
+#[derive(Clone)]
+pub struct CoReadyCoordinator {
+    #[cfg(feature = "ssr")]
+    inner: Arc<Mutex<Vec<CoReady>>>,
+    _phantom: Phantom,
+}
+
+// a ready state manager that is to be co-ordinated.  under ssr it must contain a reference to
+// the inner, unlike the other version.
+#[derive(Clone)]
+pub struct CoReady {
+    #[cfg(feature = "ssr")]
     inner: Arc<ReadyInner>,
     _phantom: Phantom,
 }
@@ -31,7 +52,7 @@ pub struct Ready {
 #[cfg(feature = "ssr")]
 #[derive(Clone)]
 pub(crate) struct ReadyInner {
-    sender: Sender<bool>,
+    sender: Sender<Option<bool>>,
     // TODO determine if/how to leverage duplicated sender for wait condition
     // this is applicable for setup at components so that it takes more than
     // one sender before the subscriber will actually wait in the case for
@@ -46,7 +67,7 @@ pub(crate) struct ReadySender {
     inner: ReadyInner,
 }
 
-/// A handle to a possibly available [`Ready`] coordinator.
+/// A handle to a possibly available [`Ready`] state.
 ///
 /// Please refer to [`Ready::handle`] for details as that's the only
 /// public associated function that will return this type.
@@ -57,7 +78,7 @@ pub struct ReadyHandle {
     _phantom: Phantom,
 }
 
-/// A subscription to the [`Ready`] coordinator, typically held by
+/// A subscription to the [`Ready`] state manager, typically held by
 /// futures that require the ready signal.
 pub struct ReadySubscription {
     #[cfg(feature = "ssr")]
@@ -68,7 +89,20 @@ pub struct ReadySubscription {
 #[cfg(feature = "ssr")]
 pub(crate) struct ReadySubscriptionInner {
     ready: Ready,
-    receiver: Receiver<bool>,
+    receiver: Receiver<Option<bool>>,
+}
+
+/// A subscription to the [`CoReady`] state manager.
+pub struct CoReadySubscription {
+    #[cfg(feature = "ssr")]
+    inner: CoReadySubscriptionInner,
+    _phantom: Phantom,
+}
+
+#[cfg(feature = "ssr")]
+pub(crate) struct CoReadySubscriptionInner {
+    ready: CoReady,
+    receiver: Receiver<Option<bool>>,
 }
 
 impl Ready {
@@ -100,8 +134,44 @@ impl Ready {
     }
 }
 
+impl CoReady {
+    /// Acquire a handle to a possibly available instance of `Ready`.
+    pub fn new() -> Self {
+        // FIXME a better error message
+        // let coordinator = use_context::<CoReadyCoordinator>()
+        //     .expect("A `CoReadyCordinator` is required to be present via context");
+        let (sender, _) = channel(None);
+        let result = Self {
+            #[cfg(feature = "ssr")]
+            inner: ReadyInner { sender }.into(),
+            _phantom: Phantom,
+        };
+        result
+    }
+
+    pub fn subscribe(&self) -> CoReadySubscription {
+        CoReadySubscription {
+            #[cfg(feature = "ssr")]
+            inner: CoReadySubscriptionInner {
+                ready: self.clone(),
+                receiver: self.inner.sender.subscribe(),
+            },
+            _phantom: Phantom,
+        }
+    }
+
+    pub fn to_ready_sender(&self) -> ReadySender {
+        self.inner.to_ready_sender()
+    }
+}
+
+impl CoReadyCoordinator {
+    fn register(r: CoReady) {
+    }
+}
+
 impl ReadyHandle {
-    /// Subscribe to the [`Ready`] coordinator.
+    /// Subscribe to the [`Ready`] state manager.
     ///
     /// To make use of a subscription within a future, move a clone of
     /// the handle into the future and call subscribe from there.
@@ -138,6 +208,13 @@ impl ReadySubscription {
 }
 
 #[cfg(feature = "ssr")]
+impl CoReadySubscription {
+    pub async fn wait(self) {
+        self.inner.wait_inner().await
+    }
+}
+
+#[cfg(feature = "ssr")]
 impl ReadySubscriptionInner {
     pub(crate) async fn wait_inner(mut self) {
         dbg!(self.ready.inner.sender.sender_count());
@@ -145,7 +222,7 @@ impl ReadySubscriptionInner {
         self
             .receiver
             .wait_for(|v| {
-                let cond = *v == true;
+                let cond = *v == Some(true);
                 dbg!(sender.sender_count());
                 dbg!(cond);
                 cond
@@ -199,26 +276,31 @@ impl ReadySubscriptionInner {
 }
 
 #[cfg(feature = "ssr")]
-impl ReadyInner {
-    pub(crate) fn complete(&self) {
-        let _ = self.sender.send(true);
+impl CoReadySubscriptionInner {
+    pub(crate) async fn wait_inner(mut self) {
+        dbg!(self.ready.inner.sender.sender_count());
+        let sender = &self.ready.inner.sender;
+        self
+            .receiver
+            .wait_for(|v| {
+                // TODO should pass if Some(false) and sender_count == 1 or Some(true)
+                let cond = *v == Some(true);
+                dbg!(sender.sender_count());
+                dbg!(*v);
+                cond
+            })
+            .await
+            .expect("internal error: sender not properly managed");
+        dbg!(self.ready.inner.sender.sender_count());
     }
 }
 
 #[cfg(feature = "ssr")]
-impl Ready {
-    pub(crate) fn new() -> Ready {
-        let (sender, _) = channel(false);
-        Ready {
-            inner: ReadyInner { sender }.into(),
-            _phantom: Phantom,
-        }
-    }
-
+impl ReadyInner {
     pub(crate) fn complete(&self) {
-        self.inner.complete();
+        let _ = self.sender.send(Some(true));
         // TODO if we were to provide a tracing feature...
-        // if let Ok(_) = self.inner.sender.send(true) {
+        // if let Ok(_) = self.sender.send(Some(true)) {
         //     leptos::logging::log!(
         //         "broadcasted complete to {} subscribers",
         //         self.inner.sender.receiver_count(),
@@ -228,21 +310,36 @@ impl Ready {
         // }
     }
 
+    // this creates a new sender
+    pub(crate) fn to_ready_sender(&self) -> ReadySender {
+        dbg!(self.sender.sender_count());
+        let result = ReadySender {
+            inner: self.clone()
+        };
+        dbg!(self.sender.sender_count());
+        result
+    }
+}
+
+#[cfg(feature = "ssr")]
+impl Ready {
+    pub(crate) fn new() -> Ready {
+        let (sender, _) = channel(Some(false));
+        Ready {
+            inner: ReadyInner { sender }.into(),
+            _phantom: Phantom,
+        }
+    }
+
+    pub(crate) fn complete(&self) {
+        self.inner.complete();
+    }
+
     pub(crate) fn subscribe_inner(&self) -> ReadySubscriptionInner {
         ReadySubscriptionInner {
             ready: self.clone(),
             receiver: self.inner.sender.subscribe(),
         }
-    }
-
-    // this creates a new sender
-    pub(crate) fn to_ready_sender(&self) -> ReadySender {
-        dbg!(self.inner.sender.sender_count());
-        let result = ReadySender {
-            inner: ReadyInner::clone(&self.inner),
-        };
-        dbg!(self.inner.sender.sender_count());
-        result
     }
 }
 

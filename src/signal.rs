@@ -11,7 +11,7 @@ use leptos::reactive::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::ready::{Ready, ReadySender};
+use crate::ready::{CoReady, ReadySender};
 
 #[derive(Clone)]
 pub struct SsrSignalResource<T>
@@ -26,7 +26,7 @@ where
     T: 'static,
 {
     #[cfg(feature = "ssr")]
-    ready: Ready,
+    ready: CoReady,
     signal_write: ArcWriteSignal<T>,
     resource: ArcResource<T>,
 }
@@ -47,7 +47,7 @@ where
 {
     fn new(value: T) -> Self {
         #[cfg(feature = "ssr")]
-        let ready = Ready::new();
+        let ready = CoReady::new();
         let (signal_read, signal_write) = arc_signal(value);
 
         let resource = ArcResource::new(
@@ -59,12 +59,12 @@ where
                 let ready = ready.clone();
                 move |_| {
                     #[cfg(feature = "ssr")]
-                    let subscriber_inner = ready.subscribe_inner();
+                    let subscriber = ready.subscribe();
                     let signal_read = signal_read.clone();
                     async move {
                         // TODO need to insert debug to check number of broadcast/waiters
                         #[cfg(feature = "ssr")]
-                        subscriber_inner.wait_inner().await;
+                        subscriber.wait().await;
                         signal_read.get_untracked()
                     }
                 }
