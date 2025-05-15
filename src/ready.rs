@@ -134,18 +134,44 @@ impl Ready {
     }
 }
 
+impl CoReadyCoordinator {
+    pub fn new() -> Self {
+        Self {
+            #[cfg(feature = "ssr")]
+            inner: Arc::new(Mutex::new(Vec::new())),
+            _phantom: Phantom,
+        }
+    }
+
+    fn register(&self, r: CoReady) {
+        self.inner.lock()
+            .expect("mutex not panicked")
+            .push(r);
+    }
+
+    pub fn prime(&self) {
+        for ready in self.inner.lock()
+            .expect("mutex not panicked")
+            .iter()
+        {
+            let _ = ready.inner.sender.send(Some(false));
+        }
+    }
+}
+
 impl CoReady {
     /// Acquire a handle to a possibly available instance of `Ready`.
     pub fn new() -> Self {
         // FIXME a better error message
-        // let coordinator = use_context::<CoReadyCoordinator>()
-        //     .expect("A `CoReadyCordinator` is required to be present via context");
+        let coordinator = use_context::<CoReadyCoordinator>()
+            .expect("A `CoReadyCordinator` is required to be present via context");
         let (sender, _) = channel(None);
         let result = Self {
             #[cfg(feature = "ssr")]
             inner: ReadyInner { sender }.into(),
             _phantom: Phantom,
         };
+        coordinator.register(result.clone());
         result
     }
 
@@ -160,13 +186,8 @@ impl CoReady {
         }
     }
 
-    pub fn to_ready_sender(&self) -> ReadySender {
+    pub(crate) fn to_ready_sender(&self) -> ReadySender {
         self.inner.to_ready_sender()
-    }
-}
-
-impl CoReadyCoordinator {
-    fn register(r: CoReady) {
     }
 }
 
@@ -284,7 +305,7 @@ impl CoReadySubscriptionInner {
             .receiver
             .wait_for(|v| {
                 // TODO should pass if Some(false) and sender_count == 1 or Some(true)
-                let cond = *v == Some(true);
+                let cond = *v == Some(true) || (*v == Some(false) && sender.sender_count() == 1);
                 dbg!(sender.sender_count());
                 dbg!(*v);
                 cond

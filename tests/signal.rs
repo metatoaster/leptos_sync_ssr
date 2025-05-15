@@ -1,4 +1,5 @@
 use leptos::prelude::*;
+use leptos_sync_ssr::CoReadyCoordinator;
 use leptos_sync_ssr::signal::{SsrSignalResource, SsrWriteSignal};
 
 #[cfg(feature = "ssr")]
@@ -73,12 +74,15 @@ fn SetterUsed(ws_set: bool) -> impl IntoView {
 async fn render_setter_set() {
     let _owner = init_renderer();
 
+    let coord = CoReadyCoordinator::new();
+    provide_context(coord.clone());
     let sr = SsrSignalResource::new(String::new());
     provide_context(sr.clone());
     let app = view! {
         <Indicator />
         <SetterUsed ws_set=true />
     };
+    coord.prime();
     dbg!("let app = ...");
     // dbg!(sr.inner.ready.inner.sender.sender_count());
 
@@ -91,12 +95,15 @@ async fn render_setter_set() {
 async fn render_setter_unset() {
     let _owner = init_renderer();
 
+    let coord = CoReadyCoordinator::new();
+    provide_context(coord.clone());
     let sr = SsrSignalResource::new(String::new());
     provide_context(sr);
     let app = view! {
         <Indicator />
         <SetterUsed ws_set=false />
     };
+    coord.prime();
 
     let html = app.to_html_stream_in_order().collect::<String>().await;
     assert_eq!(html, "<p>Indicator is: <!> </p>resource sent no signal");
@@ -111,22 +118,23 @@ async fn render_setter_unset() {
 // also it needs past sender count? perhaps the underlying bool is insuffient,
 // but rather a subscription will bump up the past_sender_count such that when
 // the mode changes it will pass
-/*
 #[cfg(feature = "ssr")]
 #[tokio::test]
 async fn render_no_setter() {
     let _owner = init_renderer();
 
+    let coord = CoReadyCoordinator::new();
+    provide_context(coord.clone());
     let sr = SsrSignalResource::new(String::new());
     provide_context(sr);
     let app = view! {
         <Indicator />
     };
+    coord.prime();
 
     let html = app.to_html_stream_in_order().collect::<String>().await;
     assert_eq!(html, "<p>Indicator is: <!> </p>");
 }
-*/
 
 #[cfg(feature = "ssr")]
 fn init_renderer() -> Owner {
