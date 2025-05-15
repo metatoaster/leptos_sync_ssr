@@ -29,8 +29,21 @@ pub struct Ready {
 }
 
 #[cfg(feature = "ssr")]
-struct ReadyInner {
+#[derive(Clone)]
+pub(crate) struct ReadyInner {
     sender: Sender<bool>,
+    // TODO determine if/how to leverage duplicated sender for wait condition
+    // this is applicable for setup at components so that it takes more than
+    // one sender before the subscriber will actually wait in the case for
+    // the signal resource
+    //
+    // sender_threshold: usize,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Clone)]
+pub(crate) struct ReadySender {
+    inner: ReadyInner,
 }
 
 /// A handle to a possibly available [`Ready`] coordinator.
@@ -127,11 +140,19 @@ impl ReadySubscription {
 #[cfg(feature = "ssr")]
 impl ReadySubscriptionInner {
     pub(crate) async fn wait_inner(mut self) {
+        dbg!(self.ready.inner.sender.sender_count());
+        let sender = &self.ready.inner.sender;
         self
             .receiver
-            .wait_for(|v| *v == true)
+            .wait_for(|v| {
+                let cond = *v == true;
+                dbg!(sender.sender_count());
+                dbg!(cond);
+                cond
+            })
             .await
             .expect("internal error: sender not properly managed");
+        dbg!(self.ready.inner.sender.sender_count());
         // XXX a 0 duration sleep seems to be required to mitigate
         // an issue where Suspend doesn't wake up after the resource
         // runs this async method, and this path does not have an
@@ -178,6 +199,13 @@ impl ReadySubscriptionInner {
 }
 
 #[cfg(feature = "ssr")]
+impl ReadyInner {
+    pub(crate) fn complete(&self) {
+        let _ = self.sender.send(true);
+    }
+}
+
+#[cfg(feature = "ssr")]
 impl Ready {
     pub(crate) fn new() -> Ready {
         let (sender, _) = channel(false);
@@ -188,7 +216,7 @@ impl Ready {
     }
 
     pub(crate) fn complete(&self) {
-        let _ = self.inner.sender.send(true);
+        self.inner.complete();
         // TODO if we were to provide a tracing feature...
         // if let Ok(_) = self.inner.sender.send(true) {
         //     leptos::logging::log!(
@@ -206,6 +234,30 @@ impl Ready {
             receiver: self.inner.sender.subscribe(),
         }
     }
+
+    // this creates a new sender
+    pub(crate) fn to_ready_sender(&self) -> ReadySender {
+        dbg!(self.inner.sender.sender_count());
+        let result = ReadySender {
+            inner: ReadyInner::clone(&self.inner),
+        };
+        dbg!(self.inner.sender.sender_count());
+        result
+    }
+}
+
+#[cfg(feature = "ssr")]
+impl Drop for ReadySender {
+    fn drop(&mut self) {
+        self.complete();
+    }
+}
+
+#[cfg(feature = "ssr")]
+impl ReadySender {
+    pub(crate) fn complete(&self) {
+        self.inner.complete();
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -217,6 +269,7 @@ mod debug {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             f.debug_struct("Ready")
                 .field("resolved", &*self.inner.sender.borrow())
+                .field("senders", &self.inner.sender.sender_count())
                 .field("subscribers", &self.inner.sender.receiver_count())
                 .finish()
         }

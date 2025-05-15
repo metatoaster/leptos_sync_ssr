@@ -63,6 +63,7 @@ pub mod component;
 #[cfg(feature = "portlet")]
 pub mod portlet;
 mod ready;
+pub mod signal;
 
 #[cfg(test)]
 mod tests;

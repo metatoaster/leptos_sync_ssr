@@ -1,5 +1,5 @@
 //! Provides the [`SyncSsr`] component.
-use leptos::{children::Children, component, view, IntoView};
+use leptos::{children::Children, component, prelude::IntoMaybeErased, view, IntoView};
 
 #[cfg(feature = "ssr")]
 mod ssr {
