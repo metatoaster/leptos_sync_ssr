@@ -149,7 +149,7 @@ impl CoReadyCoordinator {
             .push(r);
     }
 
-    pub fn prime(&self) {
+    pub fn notify(&self) {
         for ready in self.inner.lock()
             .expect("mutex not panicked")
             .iter()

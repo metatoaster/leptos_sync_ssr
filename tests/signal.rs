@@ -48,9 +48,9 @@ fn SetterUsed(ws_set: bool) -> impl IntoView {
                     let value = "Hello world!";
                     if ws_set {
                         ws.set(value.to_string());
-                        format!("resource sent signal: {value}")
+                        format!("resource write signal setting value: {value}")
                     } else {
-                        format!("resource sent no signal")
+                        format!("resource write signal setting no value")
                     }
                 }
             }
@@ -82,12 +82,12 @@ async fn render_setter_set() {
         <Indicator />
         <SetterUsed ws_set=true />
     };
-    coord.prime();
+    coord.notify();
     dbg!("let app = ...");
     // dbg!(sr.inner.ready.inner.sender.sender_count());
 
     let html = app.to_html_stream_in_order().collect::<String>().await;
-    assert_eq!(html, "<p>Indicator is: <!>Hello world!</p>resource sent signal: Hello world!");
+    assert_eq!(html, "<p>Indicator is: <!>Hello world!</p>resource write signal setting value: Hello world!");
 }
 
 #[cfg(feature = "ssr")]
@@ -103,10 +103,10 @@ async fn render_setter_unset() {
         <Indicator />
         <SetterUsed ws_set=false />
     };
-    coord.prime();
+    coord.notify();
 
     let html = app.to_html_stream_in_order().collect::<String>().await;
-    assert_eq!(html, "<p>Indicator is: <!> </p>resource sent no signal");
+    assert_eq!(html, "<p>Indicator is: <!> </p>resource write signal setting no value");
 }
 
 // XXX this test deadlocks
@@ -130,7 +130,7 @@ async fn render_no_setter() {
     let app = view! {
         <Indicator />
     };
-    coord.prime();
+    coord.notify();
 
     let html = app.to_html_stream_in_order().collect::<String>().await;
     assert_eq!(html, "<p>Indicator is: <!> </p>");
