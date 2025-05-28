@@ -69,6 +69,42 @@ fn SetterUsed(ws_set: bool) -> impl IntoView {
     }
 }
 
+#[component]
+fn SetterMisused() -> impl IntoView {
+    let sr = expect_context::<SsrSignalResource<String>>();
+    let res = ArcResource::new(
+        || (),
+        {
+            let sr = sr.clone();
+            move |_| {
+                let sr = sr.clone();
+                async move {
+                    #[cfg(feature = "ssr")]
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    // This is the misuse as the notification wouldn't be triggered
+                    // in time.
+                    let ws = sr.write_only();
+
+                    let value = "Hello world!";
+                    ws.set(value.to_string());
+                    format!("resource write signal setting value: {value}")
+                }
+            }
+        },
+    );
+
+    view! {
+        <Suspense>
+        {move || {
+            let res = res.clone();
+            Suspend::new(async move {
+                res.await
+            })
+        }}
+        </Suspense>
+    }
+}
+
 #[cfg(feature = "ssr")]
 #[tokio::test]
 async fn render_setter_set() {
@@ -107,6 +143,26 @@ async fn render_setter_unset() {
 
     let html = app.to_html_stream_in_order().collect::<String>().await;
     assert_eq!(html, "<p>Indicator is: <!> </p>resource write signal setting no value");
+}
+
+#[cfg(feature = "ssr")]
+#[tokio::test]
+async fn render_misused() {
+    let _owner = init_renderer();
+
+    let coord = CoReadyCoordinator::new();
+    provide_context(coord.clone());
+    let sr = SsrSignalResource::new(String::new());
+    provide_context(sr.clone());
+    let app = view! {
+        <Indicator />
+        <SetterMisused />
+    };
+    coord.notify();
+    let html = app.to_html_stream_in_order().collect::<String>().await;
+    // note that the resource wrote the signal but the indicator is unable to show it.
+    // also note that there is no deadlock.
+    assert_eq!(html, "<p>Indicator is: <!> </p>resource write signal setting value: Hello world!");
 }
 
 // XXX this test deadlocks
