@@ -1,6 +1,8 @@
 use leptos::prelude::*;
-use leptos_sync_ssr::CoReadyCoordinator;
-use leptos_sync_ssr::signal::{SsrSignalResource, SsrWriteSignal};
+use leptos_sync_ssr::{
+    component::SyncSsrSignal,
+    signal::{SsrSignalResource, SsrWriteSignal},
+};
 
 #[cfg(feature = "ssr")]
 mod ssr {
@@ -107,23 +109,30 @@ fn SetterMisused() -> impl IntoView {
 
 #[cfg(feature = "ssr")]
 #[tokio::test]
+async fn missing_co_ready_coordinator() {
+    let result = std::panic::catch_unwind(|| SsrSignalResource::new(String::new()));
+    assert!(result.is_err());
+}
+
+#[cfg(feature = "ssr")]
+#[tokio::test]
 async fn render_setter_set() {
     let _owner = init_renderer();
 
-    let coord = CoReadyCoordinator::new();
-    provide_context(coord.clone());
-    let sr = SsrSignalResource::new(String::new());
-    provide_context(sr.clone());
     let app = view! {
-        <Indicator />
-        <SetterUsed ws_set=true />
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <Indicator />
+                <SetterUsed ws_set=true />
+            }
+        }</SyncSsrSignal>
     };
-    coord.notify();
-    dbg!("let app = ...");
-    // dbg!(sr.inner.ready.inner.sender.sender_count());
-
-    let html = app.to_html_stream_in_order().collect::<String>().await;
-    assert_eq!(html, "<p>Indicator is: <!>Hello world!</p>resource write signal setting value: Hello world!");
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "<p>Indicator is: <!>Hello world!</p>resource write signal setting value: Hello world!<!>",
+    );
 }
 
 #[cfg(feature = "ssr")]
@@ -131,18 +140,20 @@ async fn render_setter_set() {
 async fn render_setter_unset() {
     let _owner = init_renderer();
 
-    let coord = CoReadyCoordinator::new();
-    provide_context(coord.clone());
-    let sr = SsrSignalResource::new(String::new());
-    provide_context(sr);
     let app = view! {
-        <Indicator />
-        <SetterUsed ws_set=false />
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <Indicator />
+                <SetterUsed ws_set=false />
+            }
+        }</SyncSsrSignal>
     };
-    coord.notify();
-
-    let html = app.to_html_stream_in_order().collect::<String>().await;
-    assert_eq!(html, "<p>Indicator is: <!> </p>resource write signal setting no value");
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "<p>Indicator is: <!> </p>resource write signal setting no value<!>",
+    );
 }
 
 #[cfg(feature = "ssr")]
@@ -150,46 +161,43 @@ async fn render_setter_unset() {
 async fn render_misused() {
     let _owner = init_renderer();
 
-    let coord = CoReadyCoordinator::new();
-    provide_context(coord.clone());
-    let sr = SsrSignalResource::new(String::new());
-    provide_context(sr.clone());
     let app = view! {
-        <Indicator />
-        <SetterMisused />
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <Indicator />
+                <SetterMisused />
+            }
+        }</SyncSsrSignal>
     };
-    coord.notify();
-    let html = app.to_html_stream_in_order().collect::<String>().await;
     // note that the resource wrote the signal but the indicator is unable to show it.
     // also note that there is no deadlock.
-    assert_eq!(html, "<p>Indicator is: <!> </p>resource write signal setting value: Hello world!");
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "<p>Indicator is: <!> </p>resource write signal setting value: Hello world!<!>",
+    );
 }
 
-// XXX this test deadlocks
-// given the deadlock comes from the fact that there are no additional checks
-// as the underlying wait_for will never get invoked, we need to provide an
-// additional helper (probably via a context) to flip the check to a mode where
-// check for sender count becomes active
-//
-// also it needs past sender count? perhaps the underlying bool is insuffient,
-// but rather a subscription will bump up the past_sender_count such that when
-// the mode changes it will pass
 #[cfg(feature = "ssr")]
 #[tokio::test]
 async fn render_no_setter() {
     let _owner = init_renderer();
 
-    let coord = CoReadyCoordinator::new();
-    provide_context(coord.clone());
-    let sr = SsrSignalResource::new(String::new());
-    provide_context(sr);
     let app = view! {
-        <Indicator />
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <Indicator />
+            }
+        }</SyncSsrSignal>
     };
-    coord.notify();
-
-    let html = app.to_html_stream_in_order().collect::<String>().await;
-    assert_eq!(html, "<p>Indicator is: <!> </p>");
+    // no setter should not cause a deadlock.
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "<p>Indicator is: <!> </p><!>",
+    );
 }
 
 #[cfg(feature = "ssr")]

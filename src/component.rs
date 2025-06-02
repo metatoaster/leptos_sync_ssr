@@ -4,13 +4,11 @@ use leptos::{children::Children, component, prelude::IntoMaybeErased, view, Into
 #[cfg(feature = "ssr")]
 mod ssr {
     pub use leptos::context::Provider;
+    pub use crate::ready::{CoReadyCoordinator, Ready};
 }
 
 #[cfg(feature = "ssr")]
 use ssr::*;
-
-#[cfg(feature = "ssr")]
-use crate::ready::Ready;
 
 /// The component that will provide a [`Ready`] coordinator to its
 /// children.
@@ -85,7 +83,8 @@ use crate::ready::Ready;
 /// enclosed.  This would enable the resources inside `<Breadcrumbs>` to
 /// wait for the ready signal before reading of signals of values that
 /// may be set by other components enclosed inside the `<Routes>` so
-/// that accurate SSR be done for proper hydration by the client.
+/// that SSR be done in the expected order to ensure proper hydration by
+/// the client.
 #[component]
 pub fn SyncSsr(children: Children) -> impl IntoView {
     // leptos::logging::log!("entering SyncSsr");
@@ -118,4 +117,34 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
     result
 }
 
-// TODO add the provider for the CoReadyCoordinator
+#[component]
+pub fn SyncSsrSignal(children: Children) -> impl IntoView {
+    // leptos::logging::log!("entering SyncSsrSignal");
+    #[cfg(feature = "ssr")]
+    let coord = CoReadyCoordinator::new();
+
+    #[cfg(feature = "ssr")]
+    let exit = {
+        let coord = coord.clone();
+        move || {
+            coord.notify();
+            // leptos::logging::log!("exiting SyncSsrSignal");
+        }
+    };
+
+    #[cfg(feature = "ssr")]
+    let result = view! {
+        <Provider value=coord>
+            {children()}
+            {exit}
+        </Provider>
+    };
+
+    #[cfg(not(feature = "ssr"))]
+    let result = view! {
+        {children()}
+        {}
+    };
+
+    result
+}

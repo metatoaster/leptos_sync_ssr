@@ -29,10 +29,18 @@ pub struct Ready {
     _phantom: Phantom,
 }
 
-// TODO pub(crate)?  This probably should be managed much like the SyncSsr component?
-// a version of the ready state manager that will coordinate the ready states that this
-// manages, where there is a preparation stage and a fully ready to wait stage that this
-// will signal to all the underlying ready states that they are ready to proceed or not.
+/// Encapsulates the underlying ready state coordinator that must be
+/// provided as a context to the current reactive owner; typically this
+/// is done using the [`SyncSsrSignal`](crate::component::SyncSsrSignal)
+/// component.
+///
+/// Under SSR, this contains a vector of [`CoReady`] that have been
+/// registered to this coordinator, and that that may be notified when
+/// their [`CoReadySubscription`] should continue their wait depending
+/// whether if they have live outstanding ready senders.
+///
+/// Under CSR, this is essentially a unit newtype; all resulting methods
+/// and associated functions would in essence be no-ops.
 #[derive(Clone)]
 pub struct CoReadyCoordinator {
     #[cfg(feature = "ssr")]
@@ -135,7 +143,7 @@ impl Ready {
 }
 
 impl CoReadyCoordinator {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             #[cfg(feature = "ssr")]
             inner: Arc::new(Mutex::new(Vec::new())),
@@ -149,7 +157,7 @@ impl CoReadyCoordinator {
             .push(r);
     }
 
-    pub fn notify(&self) {
+    pub(crate) fn notify(&self) {
         for ready in self.inner.lock()
             .expect("mutex not panicked")
             .iter()
