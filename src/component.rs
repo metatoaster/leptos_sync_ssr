@@ -1,4 +1,4 @@
-//! Provides the [`SyncSsr`] component.
+//! Provides the [`SyncSsr`] and [`SyncSsrSignal`] components.
 use leptos::{children::Children, component, prelude::IntoMaybeErased, view, IntoView};
 
 #[cfg(feature = "ssr")]

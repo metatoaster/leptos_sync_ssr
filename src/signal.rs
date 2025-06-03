@@ -1,23 +1,38 @@
+//! Provides the signal-resource pairing for synchronized SSR.
 use std::{
     ops::{Deref, DerefMut},
     panic::Location,
     sync::Arc,
 };
 
-use leptos::prelude::*;
-use leptos::reactive::{
-    traits::{DefinedAt, IntoInner, IsDisposed, Notify, UntrackableGuard, Write},
-    signal:: guards::UntrackedWriteGuard,
+use leptos::{
+    reactive::{
+        traits::{DefinedAt, Get, GetUntracked, IntoInner, IsDisposed, Notify, UntrackableGuard, Write},
+        signal::{ArcRwSignal, ArcWriteSignal, guards::UntrackedWriteGuard},
+    },
+    server::ArcResource,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
+#[cfg(feature = "ssr")]
 use crate::ready::{CoReady, ReadySender};
 
 /// Provides a signal-resource pairing that together works to provide an
 /// asynchronously waitable read signal (through the resource) under
-/// SSR, where upon acquisition of the write-only side will ensure the
-/// resource wait for the value be written (or the write signal be
-/// disposed of) before continuing execution.
+/// SSR.
+///
+/// The read-only resource will wait upon acquisition of the write-only
+/// signal, as this will ensure the resource produce the intended value
+/// under SSR to ensure the expected content be rendered and to allow
+/// hydration to happen correctly.  Should the write-only signal be
+/// dropped, the resource will be permitted to return the value it holds
+/// also.
+///
+/// Note that this type can only be created inside components that have
+/// have the [`CoReadyCoordinator`](crate::ready::CoReadyCoordinator)
+/// be provided as a context, which typically involves having the
+/// [`SyncSsrSignal`](crate::component::SyncSsrSignal) component be one
+/// of the ancestors of the component in the view tree.
 #[derive(Clone)]
 pub struct SsrSignalResource<T>
 where
@@ -37,12 +52,15 @@ where
 }
 
 /// The write signal created by [`SsrSignalResource::write_only`].
-/// This can cause the paired resource be stuck in waiting until this or
-/// its copies are dropped.
+///
+/// When created before the `CoReadyCoordinator` notified is invoked,
+/// it will cause the paired resource to wait until a value is set
+/// through any of trait methods for updates or that this is dropped.
 pub struct SsrWriteSignal<T>
 where
     T: 'static,
 {
+    #[cfg(feature = "ssr")]
     ready_sender: ReadySender,
     write_signal: ArcWriteSignal<T>,
 }
@@ -55,7 +73,7 @@ where
     fn new(value: T) -> Self {
         #[cfg(feature = "ssr")]
         let ready = CoReady::new();
-        let (signal_read, signal_write) = arc_signal(value);
+        let (signal_read, signal_write) = ArcRwSignal::new(value).split();
 
         let resource = ArcResource::new(
             {
@@ -63,6 +81,7 @@ where
                 move || signal_read.get()
             },
             {
+                #[cfg(feature = "ssr")]
                 let ready = ready.clone();
                 move |_| {
                     #[cfg(feature = "ssr")]
@@ -107,12 +126,14 @@ where
 impl<T> SsrSignalResource<T> {
     /// Acquire the underlying `ArcResource` side of the pair.
     ///
-    /// Under SSR, the provided resource will asynchronously wait until
-    /// any paired [`SsrWriteSignal`] provides the value or is dropped.
-    /// This would also finish waiting of the enclosing `SyncSsrSignal`
-    /// component is done processing without a `SsrWriteSignal` being
-    /// paired, where the underlying value (typically the default value
-    /// used to create the [`SsrSignalResource`]) is returned.
+    /// Under SSR, the underlying resource will asynchronously wait
+    /// until any paired [`SsrWriteSignal`] provides the value or is
+    /// dropped, where the provided value will be returned.
+    ///
+    /// The resource will also return the underlying value (typically
+    /// the default value used to create the [`SsrSignalResource`])
+    /// should the enclosing `SyncSsrSignal` component is done
+    /// processing without a `SsrWriteSignal` being paired.
     ///
     /// Under CSR no waiting would happen and so the underlying resource
     /// should act like an indirect ArcReadSignal.
@@ -138,6 +159,7 @@ impl<T> SsrSignalResource<T> {
     pub fn write_only(&self) -> SsrWriteSignal<T> {
         SsrWriteSignal {
             write_signal: self.inner.signal_write.clone(),
+            #[cfg(feature = "ssr")]
             ready_sender: self.inner.ready.to_ready_sender(),
         }
     }
@@ -178,6 +200,7 @@ impl<T> Notify for SsrWriteSignal<T> {
         self.write_signal.notify();
         // assume when this is marked dirty, a change has happened and so it
         // is now safe for the reader to continue execution
+        #[cfg(feature = "ssr")]
         self.ready_sender.complete();
     }
 }
