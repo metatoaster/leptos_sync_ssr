@@ -45,6 +45,7 @@ impl<T> SsrSignalResourceInner<T>
 where
     T: Clone + Send + Sync + PartialEq + Serialize + DeserializeOwned,
 {
+    #[track_caller]
     fn new(value: T) -> Self {
         #[cfg(feature = "ssr")]
         let ready = CoReady::new();
@@ -84,6 +85,7 @@ impl<T> SsrSignalResource<T>
 where
     T: Clone + Send + Sync + PartialEq + Serialize + DeserializeOwned,
 {
+    #[track_caller]
     pub fn new(value: T) -> Self {
         Self {
             inner: SsrSignalResourceInner::new(value).into(),

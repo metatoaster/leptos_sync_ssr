@@ -11,9 +11,8 @@ use ssr::*;
 #[derive(Clone)]
 struct Phantom;
 
-/// Encapsulates the underlying ready state manager that may be provided
-/// as a context provided by the [`SyncSsr`](crate::component::SyncSsr)
-/// component.
+/// Encapsulates the underlying ready state that may be provided as a
+/// context by the [`SyncSsr`](crate::component::SyncSsr) component.
 ///
 /// Under SSR, this contains a `Sender` that will be able to broadcast
 /// a message to all instances of actively waiting [`ReadySubscription`]
@@ -48,8 +47,16 @@ pub struct CoReadyCoordinator {
     _phantom: Phantom,
 }
 
-// a ready state manager that is to be co-ordinated.  under ssr it must contain a reference to
-// the inner, unlike the other version.
+/// Encapsulates a coordinated ready state.
+///
+/// Under SSR, this contains a `Sender` that may be cloned, and that all
+/// of them will be able to broadcast a message to all actively waiting
+/// [`CoReadySubscription`] that this state has spawned to inform the
+/// futures that the view tree enclosed by `SyncSsrSignal` is now ready
+/// and thus the wait is over.
+///
+/// Under CSR, this is essentially a unit newtype; all resulting methods
+/// and associated functions would in essence be no-ops.
 #[derive(Clone)]
 pub struct CoReady {
     #[cfg(feature = "ssr")]
@@ -86,8 +93,8 @@ pub struct ReadyHandle {
     _phantom: Phantom,
 }
 
-/// A subscription to the [`Ready`] state manager, typically held by
-/// futures that require the ready signal.
+/// A subscription to the [`Ready`] state, typically held by futures
+/// that require the ready signal.
 pub struct ReadySubscription {
     #[cfg(feature = "ssr")]
     inner: Option<ReadySubscriptionInner>,
@@ -100,7 +107,8 @@ pub(crate) struct ReadySubscriptionInner {
     receiver: Receiver<Option<bool>>,
 }
 
-/// A subscription to the [`CoReady`] state manager.
+/// A subscription to the [`CoReady`] state, typically held by the
+/// `Resource` futures that require the signal to continue.
 pub struct CoReadySubscription {
     #[cfg(feature = "ssr")]
     inner: CoReadySubscriptionInner,
@@ -142,10 +150,10 @@ impl Ready {
     }
 }
 
+#[cfg(feature = "ssr")]
 impl CoReadyCoordinator {
     pub(crate) fn new() -> Self {
         Self {
-            #[cfg(feature = "ssr")]
             inner: Arc::new(Mutex::new(Vec::new())),
             _phantom: Phantom,
         }
@@ -167,15 +175,34 @@ impl CoReadyCoordinator {
     }
 }
 
+#[cfg(not(feature = "ssr"))]
+impl CoReadyCoordinator {
+    pub(crate) fn new() -> Self {
+        Self {
+            _phantom: Phantom,
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
 impl CoReady {
-    /// Acquire a handle to a possibly available instance of `Ready`.
+    /// Create and register a new instance of `CoReady` with the
+    /// [`CoReadyCoordinator`] provided as a context in the reactive
+    /// graph.  This context is provided by nesting inside the
+    /// `<SyncSsrSignal/>` component.
+    ///
+    /// ## Panics
+    /// Panics if the context of `CoReadyCoordinator` is not found in
+    /// the current reactive owner or its ancestors.
+    #[track_caller]
     pub fn new() -> Self {
+        let location = std::panic::Location::caller();
         // FIXME a better error message
-        let coordinator = use_context::<CoReadyCoordinator>()
-            .expect("A `CoReadyCordinator` is required to be present via context");
+        let coordinator = use_context::<CoReadyCoordinator>().unwrap_or_else(|| {
+            panic!("{location:?} expected a context of `CoReadyCoordinator` to be present")
+        });
         let (sender, _) = channel(None);
         let result = Self {
-            #[cfg(feature = "ssr")]
             inner: ReadyInner { sender }.into(),
             _phantom: Phantom,
         };
@@ -183,6 +210,10 @@ impl CoReady {
         result
     }
 
+    /// Subscribe to this [`CoReady`] state.
+    ///
+    /// To make use of this subscription within a future, move a clone
+    /// of this into the future and call subscribe from that.
     pub fn subscribe(&self) -> CoReadySubscription {
         CoReadySubscription {
             #[cfg(feature = "ssr")]
@@ -199,11 +230,22 @@ impl CoReady {
     }
 }
 
+#[cfg(not(feature = "ssr"))]
+impl CoReady {
+    pub fn new() -> Self {
+        Self { _phantom: Phantom }
+    }
+
+    pub fn subscribe(&self) -> CoReadySubscription {
+        CoReadySubscription { _phantom: Phantom }
+    }
+}
+
 impl ReadyHandle {
-    /// Subscribe to the [`Ready`] state manager.
+    /// Subscribe to the [`Ready`] state.
     ///
-    /// To make use of a subscription within a future, move a clone of
-    /// the handle into the future and call subscribe from there.
+    /// To make use of this subscription within a future, move a clone
+    /// of this handle into the future and call subscribe from that.
     pub fn subscribe(&self) -> ReadySubscription {
         ReadySubscription {
             #[cfg(feature = "ssr")]
@@ -238,6 +280,15 @@ impl ReadySubscription {
 
 #[cfg(feature = "ssr")]
 impl CoReadySubscription {
+    /// Asynchronously wait for the ready signal.
+    ///
+    /// This contains a receiver that will wait for the signal from
+    /// the associated `CoReady` or its associated `ReadySender` bound
+    /// to this subscription.
+    ///
+    /// This will wait until the value `Some(true)` is received, much
+    /// like `ReadySubscription`, but it will also finish waiting on a
+    /// `Some(false)` value if there are no outstanding `ReadySender`.
     pub async fn wait(self) {
         self.inner.wait_inner().await
     }
@@ -312,7 +363,6 @@ impl CoReadySubscriptionInner {
         self
             .receiver
             .wait_for(|v| {
-                // TODO should pass if Some(false) and sender_count == 1 or Some(true)
                 let cond = *v == Some(true) || (*v == Some(false) && sender.sender_count() == 1);
                 dbg!(sender.sender_count());
                 dbg!(*v);
