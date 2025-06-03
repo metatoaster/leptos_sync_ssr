@@ -1,8 +1,11 @@
+use std::time::Duration;
+
 use leptos::prelude::*;
 use leptos_sync_ssr::{
     component::SyncSsrSignal,
     signal::{SsrSignalResource, SsrWriteSignal},
 };
+use tokio::time::timeout;
 
 #[cfg(feature = "ssr")]
 mod ssr {
@@ -10,6 +13,13 @@ mod ssr {
 }
 #[cfg(feature = "ssr")]
 use ssr::*;
+
+#[derive(Clone, Copy)]
+enum Mode {
+    Set,
+    Update,
+    UpdateUntracked,
+}
 
 #[component]
 fn Indicator() -> impl IntoView {
@@ -30,7 +40,7 @@ fn Indicator() -> impl IntoView {
 }
 
 #[component]
-fn SetterUsed(ws_set: bool) -> impl IntoView {
+fn SetterUsed(mode: Option<Mode>) -> impl IntoView {
     let sr = expect_context::<SsrSignalResource<String>>();
     let res = ArcResource::new(
         || (),
@@ -48,11 +58,20 @@ fn SetterUsed(ws_set: bool) -> impl IntoView {
                     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
                     let value = "Hello world!";
-                    if ws_set {
-                        ws.set(value.to_string());
-                        format!("resource write signal setting value: {value}")
-                    } else {
-                        format!("resource write signal setting no value")
+                    match mode {
+                        None => format!("resource write signal setting no value"),
+                        Some(Mode::Set) => {
+                            ws.set(value.to_string());
+                            format!("resource write signal setting value: {value}")
+                        }
+                        Some(Mode::Update) => {
+                            ws.update(|s| s.push_str(value));
+                            format!("resource write signal pushed value: {value}")
+                        }
+                        Some(Mode::UpdateUntracked) => {
+                            ws.update_untracked(|s| s.push_str(value));
+                            format!("resource write signal pushed value (untracked): {value}")
+                        }
                     }
                 }
             }
@@ -72,7 +91,7 @@ fn SetterUsed(ws_set: bool) -> impl IntoView {
 }
 
 #[component]
-fn SetterMisused() -> impl IntoView {
+fn SetterMisusedWriteOnlyCreatedLate() -> impl IntoView {
     let sr = expect_context::<SsrSignalResource<String>>();
     let res = ArcResource::new(
         || (),
@@ -107,6 +126,15 @@ fn SetterMisused() -> impl IntoView {
     }
 }
 
+#[component]
+fn SetterMisusedWriteOnlyKeptAlive() -> impl IntoView {
+    let sr = expect_context::<SsrSignalResource<String>>();
+    let ws = sr.write_only();
+    // DO NOT DO THIS: it will cause the paired resource deadlock!
+    provide_context(ws);
+    "Stuffed the write_only into the reactive graph to force a deadlock"
+}
+
 #[cfg(feature = "ssr")]
 #[tokio::test]
 async fn missing_co_ready_coordinator() {
@@ -125,7 +153,7 @@ async fn render_setter_set() {
             provide_context(sr.clone());
             view! {
                 <Indicator />
-                <SetterUsed ws_set=true />
+                <SetterUsed mode=Some(Mode::Set) />
             }
         }</SyncSsrSignal>
     };
@@ -137,7 +165,7 @@ async fn render_setter_set() {
 
 #[cfg(feature = "ssr")]
 #[tokio::test]
-async fn render_setter_unset() {
+async fn render_setter_update() {
     let _owner = init_renderer();
 
     let app = view! {
@@ -146,7 +174,49 @@ async fn render_setter_unset() {
             provide_context(sr.clone());
             view! {
                 <Indicator />
-                <SetterUsed ws_set=false />
+                <SetterUsed mode=Some(Mode::Update) />
+            }
+        }</SyncSsrSignal>
+    };
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "<p>Indicator is: <!>Hello world!</p>resource write signal pushed value: Hello world!<!>",
+    );
+}
+
+#[cfg(feature = "ssr")]
+#[tokio::test]
+async fn render_setter_update_untracked() {
+    let _owner = init_renderer();
+
+    let app = view! {
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <Indicator />
+                <SetterUsed mode=Some(Mode::UpdateUntracked) />
+            }
+        }</SyncSsrSignal>
+    };
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "<p>Indicator is: <!>Hello world!</p>resource write signal pushed value (untracked): Hello world!<!>",
+    );
+}
+
+#[cfg(feature = "ssr")]
+#[tokio::test]
+async fn render_setter_not_set() {
+    let _owner = init_renderer();
+
+    let app = view! {
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <Indicator />
+                <SetterUsed mode=None />
             }
         }</SyncSsrSignal>
     };
@@ -158,7 +228,7 @@ async fn render_setter_unset() {
 
 #[cfg(feature = "ssr")]
 #[tokio::test]
-async fn render_misused() {
+async fn render_misused_write_only_created_late() {
     let _owner = init_renderer();
 
     let app = view! {
@@ -167,7 +237,7 @@ async fn render_misused() {
             provide_context(sr.clone());
             view! {
                 <Indicator />
-                <SetterMisused />
+                <SetterMisusedWriteOnlyCreatedLate />
             }
         }</SyncSsrSignal>
     };
@@ -177,6 +247,30 @@ async fn render_misused() {
         app.to_html_stream_in_order().collect::<String>().await,
         "<p>Indicator is: <!> </p>resource write signal setting value: Hello world!<!>",
     );
+}
+
+#[cfg(feature = "ssr")]
+#[tokio::test]
+async fn render_misused_write_only_kept_alive() {
+    let _owner = init_renderer();
+
+    let app = view! {
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <Indicator />
+                <SetterMisusedWriteOnlyKeptAlive />
+            }
+        }</SyncSsrSignal>
+    };
+
+    // This deadlock happens because the setter was kept alive in the reactive
+    // graph without being dropped (or otherwise written to).
+    assert!(timeout(Duration::from_millis(500), app.to_html_stream_in_order().collect::<String>())
+        .await
+        .is_err()
+    )
 }
 
 #[cfg(feature = "ssr")]
