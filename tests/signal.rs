@@ -90,6 +90,43 @@ fn SetterUsed(mode: Option<Mode>) -> impl IntoView {
     }
 }
 
+/*
+#[component]
+fn SetterMisusedWriteOnlyCloned() -> impl IntoView {
+    let sr = expect_context::<SsrSignalResource<String>>();
+    let ws = sr.write_only();
+    let res = ArcResource::new(
+        || (),
+        {
+            let ws = ws.clone();
+            move |_| {
+                let ws = ws.clone();
+                async move {
+                    #[cfg(feature = "ssr")]
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    let value = "Hello world!";
+                    // not using this will deadlock using the original naive
+                    // implementation of `CoReadyCoordinator::notify`.
+                    ws.set(value.to_string());
+                    format!("resource write signal setting value: {value}")
+                }
+            }
+        },
+    );
+
+    view! {
+        <Suspense>
+        {move || {
+            let res = res.clone();
+            Suspend::new(async move {
+                res.await
+            })
+        }}
+        </Suspense>
+    }
+}
+*/
+
 #[component]
 fn SetterMisusedWriteOnlyCreatedLate() -> impl IntoView {
     let sr = expect_context::<SsrSignalResource<String>>();
@@ -225,6 +262,36 @@ async fn render_setter_not_set() {
         "<p>Indicator is: <!> </p>resource write signal setting no value<!>",
     );
 }
+
+/*
+#[cfg(feature = "ssr")]
+#[tokio::test]
+async fn render_misused_write_only_cloned() {
+    let _owner = init_renderer();
+
+    let app = view! {
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <Indicator />
+                <SetterMisusedWriteOnlyCloned />
+            }
+        }</SyncSsrSignal>
+    };
+    // Note that should the write signal be clonable, the naive implementation
+    // of `CoReadyCoordinator::notify` would reset the value from Some(true)
+    // back to a Some(false) which will result in a deadlock if a value is not
+    // set as the drop condition gets reverted.
+    //
+    // In the updated implementation, it will simply cause the wait to not
+    // happen due to the early drop and will not result in the correct value.
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "<p>Indicator is: <!>Hello world!</p>resource write signal setting value: Hello world!<!>",
+    );
+}
+*/
 
 #[cfg(feature = "ssr")]
 #[tokio::test]

@@ -170,7 +170,9 @@ impl CoReadyCoordinator {
             .expect("mutex not panicked")
             .iter()
         {
-            let _ = ready.inner.sender.send(Some(false));
+            if *ready.inner.sender.borrow() != Some(true) {
+                let _ = ready.inner.sender.send(Some(false));
+            }
         }
     }
 }

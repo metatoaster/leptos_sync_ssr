@@ -39,7 +39,6 @@ where
 /// The write signal created by [`SsrSignalResource::write_only`].
 /// This can cause the paired resource be stuck in waiting until this or
 /// its copies are dropped.
-#[derive(Clone)]
 pub struct SsrWriteSignal<T>
 where
     T: 'static,
