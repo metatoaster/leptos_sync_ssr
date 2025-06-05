@@ -152,6 +152,16 @@ impl Ready {
 
 #[cfg(feature = "ssr")]
 impl CoReadyCoordinator {
+    /// Create a new `CoReadyCoordinator`.
+    ///
+    /// This function is provided to allow more manual notifying of the
+    /// underlying `CoReady` states.  Do note that this does not in fact
+    /// provide context, which [`CoReady::new`] expects, hence it's
+    /// recommended to use the `<SyncSsrSignal/>` component instead as
+    /// that not only provide the context but also ensures that
+    /// [`CoReadyCoordinator::notify`] is also called when all its
+    /// children are done processing, to ensure that those subscription
+    /// without senders can stop waiting.
     pub(crate) fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(Vec::new())),
@@ -165,7 +175,15 @@ impl CoReadyCoordinator {
             .push(r);
     }
 
+    /// Notifies all `CoReady` states that they are primed, if they are
+    /// not already completed.
+    ///
+    /// What this means is this allow the subscribers that are actively
+    /// waiting be able to check whether they should continue to wait.
+    /// If there are no outstanding `ReadySender`s then they should stop
+    /// waiting, otherwise they should continue to wait.
     pub(crate) fn notify(&self) {
+        leptos::logging::log!("[!] CoReadyCoordinator::notify");
         for ready in self.inner.lock()
             .expect("mutex not panicked")
             .iter()

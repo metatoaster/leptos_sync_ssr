@@ -10,8 +10,7 @@ mod ssr {
 #[cfg(feature = "ssr")]
 use ssr::*;
 
-/// The component that will provide a [`Ready`] coordinator to its
-/// children.
+/// This component provides the [`Ready`] context to its children.
 ///
 /// Typical usage of this component will simply enclose the components
 /// that desire to signal to an earlier component some value that should
@@ -117,6 +116,76 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
     result
 }
 
+/// This component provides the [`CoReadyCoordinator`] context to its
+/// children.
+///
+/// Given how [`SsrSignalResource`](crate::signal::SsrSignalResource)
+/// requires the `CoReadyCoordinator` be available as a context, usage
+/// of this component to enclose the components making use of that type
+/// is the recommended way to setup and teardown the context.
+///
+/// This enables the correct processing order to ensure that the values
+/// to be provided by the resource is provided after waiting correctly.
+///
+/// The following represents typical usage.
+///
+/// FIXME actually make it an example that uses SsrSignalResource
+///
+/// ```
+/// use leptos::prelude::*;
+/// use leptos_router::{
+///     components::{Route, Router, Routes},
+///     path, MatchNestedRoutes,
+/// };
+/// use leptos_sync_ssr::component::SyncSsrSignal;
+///
+/// #[component]
+/// fn MyApp() -> impl IntoView {
+///     view! {
+///         <Router>
+///             <nav>
+///                 <a href="/">"Home"</a>
+///                 <a href="/author/">"Authors"</a>
+///                 <a href="/article/">"Articles"</a>
+///             </nav>
+///             <SyncSsrSignal>
+///                 <Breadcrumbs/>
+///                 <Routes fallback=|| ()>
+///                     <Route path=path!("") view=HomePage/>
+///                     <AuthorRoutes/>
+///                     <ArticleRoutes/>
+///                 </Routes>
+///             </SyncSsrSignal>
+///         </Router>
+///     }
+/// }
+/// #
+/// # #[component]
+/// # fn HomePage() -> impl IntoView {
+/// #     ()
+/// # }
+/// #
+/// # #[component]
+/// # fn Breadcrumbs() -> impl IntoView {
+/// #     ()
+/// # }
+/// #
+/// # #[component]
+/// # pub fn ArticleRoutes() -> impl MatchNestedRoutes + Clone {
+/// #     view! {
+/// #         <Route path=path!("") view=HomePage/>
+/// #     }
+/// #     .into_inner()
+/// # }
+/// #
+/// # #[component]
+/// # pub fn AuthorRoutes() -> impl MatchNestedRoutes + Clone {
+/// #     view! {
+/// #         <Route path=path!("") view=HomePage/>
+/// #     }
+/// #     .into_inner()
+/// # }
+/// ```
 #[component]
 pub fn SyncSsrSignal(children: Children) -> impl IntoView {
     // leptos::logging::log!("entering SyncSsrSignal");

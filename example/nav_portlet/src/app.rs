@@ -8,7 +8,7 @@ use leptos_router::{
     path, MatchNestedRoutes, ParamSegment, SsrMode, StaticSegment,
 };
 
-use leptos_sync_ssr::component::SyncSsr;
+use leptos_sync_ssr::component::SyncSsrSignal;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct Author {
@@ -247,9 +247,6 @@ async fn get_article(id: u32) -> Result<Article, ServerFnError> {
 pub fn App() -> impl IntoView {
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();
-    // provide_field_nav_portlet_context();
-    NavPortletCtx::provide();
-    InfoPortletCtx::provide();
     let fallback = || view! { "Page not found." }.into_view();
 
     view! {
@@ -268,25 +265,29 @@ pub fn App() -> impl IntoView {
                     <A href="/article/">"Articles"</A>
                 </nav>
             </header>
-            <SyncSsr>
-                <main>
-                    <aside>
-                        <NavPortlet/>
-                        <InfoPortlet/>
-                    </aside>
-                    <article>
-                        <Routes fallback>
-                            <Route path=path!("") view=HomePage/>
-                            <AuthorRoutes/>
-                            <ArticleRoutes/>
-                        </Routes>
-                    </article>
-                    // Uncomment this aside after should work also
-                    // <aside>
-                    //     <NavPortlet/>
-                    // </aside>
-                </main>
-            </SyncSsr>
+            <SyncSsrSignal>{
+                NavPortletCtx::provide();
+                InfoPortletCtx::provide();
+                view! {
+                    <main>
+                        <aside>
+                            <NavPortlet/>
+                            <InfoPortlet/>
+                        </aside>
+                        <article>
+                            <Routes fallback>
+                                <Route path=path!("") view=HomePage/>
+                                <AuthorRoutes/>
+                                <ArticleRoutes/>
+                            </Routes>
+                        </article>
+                        // Uncomment this aside after should work also
+                        // <aside>
+                        //     <NavPortlet/>
+                        // </aside>
+                    </main>
+                }
+            }</SyncSsrSignal>
         </Router>
     }
 }
@@ -383,71 +384,67 @@ pub fn AuthorTop() -> impl IntoView {
         },
     ));
 
-    let resource = expect_context::<Resource<Result<Vec<(String, Author)>, ServerFnError>>>();
-    let nav_ws = NavPortletCtx::expect_write();
-    let info_ws = InfoPortletCtx::expect_write();
+    let author = expect_context::<Resource<Result<(String, Author), ServerFnError>>>();
+    let authors = expect_context::<Resource<Result<Vec<(String, Author)>, ServerFnError>>>();
+    let nav_ctx = expect_context::<NavPortletCtx>();
+    let info_ctx = expect_context::<InfoPortletCtx>();
+
+    #[cfg(not(feature="ssr"))]
     on_cleanup({
-        let nav_ws = nav_ws.clone();
-        let info_ws = info_ws.clone();
-        // cleanup in an effect somehow functions as a delay to prevent reposition
-        // when unmounting one navigation and be replaced with another.
+        let nav_ctx = nav_ctx.clone();
+        let info_ctx = info_ctx.clone();
         move || {
-            Effect::new(move || {
-                // leptos::logging::log!("Running cleanup of porlet for AuthorTop");
-                nav_ws.update(|c| c.clear());
-                info_ws.update(|c| c.clear());
-            });
+            leptos::logging::log!("<AuthorTop> on_cleanup");
+            nav_ctx.write_only().set(None);
+            info_ctx.write_only().set(None);
+            // Effect::new(move || {
+            //     leptos::logging::log!("<ArticleTop> on_cleanup Effect");
+            //     NavPortletCtx::clear();
+            //     InfoPortletCtx::clear();
+            // });
         }
     });
-    // Using the write signal to set the resource directly like so will
-    // actaully result in the underlying resource being non-reactive, as
-    // this is a barrier to signal propagation.
-    //
-    // That said, this navigation portlet will appear to be reactive,
-    // however, this is simply coincidental as the resource underlying
-    // will not get updated to provide new data, but not so for the next
-    // one.
-    nav_ws.update(move |c| {
-        // leptos::logging::log!("Updating resource for AuthorTop");
-        c.set(ArcResource::new_blocking(
-            || (),
-            move |_| async move {
-                resource.await.map(|authors| {
-                    authors
-                        .into_iter()
-                        .map(move |(id, author)| NavItem {
-                            href: format!("/author/{id}/"),
-                            text: author.name.to_string(),
+
+    let portlets = ArcResource::new(
+        || (),
+        move |_| {
+            let nav_ws = nav_ctx.write_only();
+            let info_ws = info_ctx.write_only();
+            async move {
+                nav_ws.set(
+                    authors.await
+                        .map(|authors| {
+                            authors
+                                .into_iter()
+                                .map(move |(id, author)| NavItem {
+                                    href: format!("/author/{id}/"),
+                                    text: author.name.to_string(),
+                                })
+                                .collect::<Vec<_>>()
+                                .into()
                         })
-                        .collect::<Vec<_>>()
-                        .into()
-                })
-            },
-        ))
-    });
-
-    let resource = expect_context::<Resource<Result<(String, Author), ServerFnError>>>();
-    // in order to reflect the reactivity of the underlying resource, a
-    // function must be used for setting of the resource through the
-    // write signal, and underlying resource(s) must be tracked manually
-    // here to preserve reactivity of the portlet.
-    let portlet = move || {
-        resource.track();
-        info_ws.update(move |c| {
-            c.set(ArcResource::new_blocking(
-                || (),
-                move |_| async move {
-                    resource.await.map(|(id, _)| Info {
-                        entity: "Author".to_string(),
-                        id,
-                    })
-                },
-            ))
-        });
-    };
-
+                        .ok()
+                );
+                info_ws.set(
+                    author.await
+                        .map(|(id, _)| Info {
+                            entity: "Author".to_string(),
+                            id,
+                        })
+                        .ok()
+                );
+            }
+        }
+    );
     view! {
-        {portlet}
+        <Transition>
+        {move || {
+            let portlets = portlets.clone();
+            Suspend::new(async move {
+                portlets.await
+            })
+        }}
+        </Transition>
         <h3>"<AuthorTop/>"</h3>
         <Outlet/>
     }
@@ -554,57 +551,66 @@ pub fn ArticleTop() -> impl IntoView {
         },
     ));
 
-    let resource = expect_context::<Resource<Result<Vec<(u32, Article)>, ServerFnError>>>();
-    let nav_ws = NavPortletCtx::expect_write();
-    let info_ws = InfoPortletCtx::expect_write();
+    let articles = expect_context::<Resource<Result<Vec<(u32, Article)>, ServerFnError>>>();
+    let article = expect_context::<Resource<Result<Article, ServerFnError>>>();
+    let nav_ctx = expect_context::<NavPortletCtx>();
+    let info_ctx = expect_context::<InfoPortletCtx>();
+
     on_cleanup({
-        let nav_ws = nav_ws.clone();
-        let info_ws = info_ws.clone();
+        let nav_ctx = nav_ctx.clone();
+        let info_ctx = info_ctx.clone();
         move || {
-            Effect::new(move || {
-                // leptos::logging::log!("Running cleanup of porlet for ArticleTop");
-                nav_ws.update(|c| c.clear());
-                info_ws.update(|c| c.clear());
-            });
+            leptos::logging::log!("<ArticleTop> on_cleanup");
+            nav_ctx.write_only().set(None);
+            info_ctx.write_only().set(None);
+            // Effect::new(move || {
+            //     leptos::logging::log!("<ArticleTop> on_cleanup Effect");
+            //     NavPortletCtx::clear();
+            //     InfoPortletCtx::clear();
+            // });
         }
     });
-    // See the `nav_ws.update` call in AuthorTop for a detailed explanation.
-    nav_ws.update(move |c| {
-        // leptos::logging::log!("Updating resource for ArticleTop");
-        c.set(ArcResource::new_blocking(
-            || (),
-            move |_| async move {
-                resource.await.map(|articles| {
-                    articles
-                        .into_iter()
-                        .map(move |(id, article)| NavItem {
-                            href: format!("/article/{id}/"),
-                            text: article.title.to_string(),
-                        })
-                        .collect::<Vec<_>>()
-                        .into()
-                })
-            },
-        ))
-    });
 
-    let resource = expect_context::<Resource<Result<Article, ServerFnError>>>();
-    let portlet = move || {
-        resource.track();
-        info_ws.update(move |c| {
-            c.set(ArcResource::new_blocking(
-                || (),
-                move |_| async move {
-                    resource.await.map(|article| Info {
-                        entity: "Article".to_string(),
-                        id: article.id.to_string(),
-                    })
-                },
-            ))
-        });
-    };
+    let portlets = ArcResource::new(
+        || (),
+        move |_| {
+            let nav_ws = nav_ctx.write_only();
+            let info_ws = info_ctx.write_only();
+            async move {
+                nav_ws.set(
+                    articles.await
+                        .map(|articles| {
+                            articles
+                                .into_iter()
+                                .map(move |(id, article)| NavItem {
+                                    href: format!("/article/{id}/"),
+                                    text: article.title.to_string(),
+                                })
+                                .collect::<Vec<_>>()
+                                .into()
+                        })
+                        .ok()
+                );
+                info_ws.set(
+                    article.await
+                        .map(|article| Info {
+                            entity: "Article".to_string(),
+                            id: article.id.to_string(),
+                        })
+                        .ok()
+                );
+            }
+        }
+    );
     view! {
-        {portlet}
+        <Transition>
+        {move || {
+            let portlets = portlets.clone();
+            Suspend::new(async move {
+                portlets.await
+            })
+        }}
+        </Transition>
         <h3>"<ArticleTop/>"</h3>
         <Outlet/>
     }

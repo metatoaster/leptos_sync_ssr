@@ -1,14 +1,14 @@
 //! Provides the signal-resource pairing for synchronized SSR.
 use std::{
-    ops::{Deref, DerefMut},
+    fmt::{Debug, Formatter, Result},
     panic::Location,
     sync::Arc,
 };
 
 use leptos::{
     reactive::{
-        traits::{DefinedAt, Get, GetUntracked, IntoInner, IsDisposed, Notify, UntrackableGuard, Write},
-        signal::{ArcRwSignal, ArcWriteSignal, guards::UntrackedWriteGuard},
+        traits::{DefinedAt, Get, GetUntracked, IsDisposed, Notify, UntrackableGuard, Write},
+        signal::{ArcReadSignal, ArcRwSignal, ArcWriteSignal, guards::UntrackedWriteGuard},
     },
     server::ArcResource,
 };
@@ -26,29 +26,26 @@ use crate::ready::{CoReady, ReadySender};
 /// under SSR to ensure the expected content be rendered and to allow
 /// hydration to happen correctly.  Should the write-only signal be
 /// dropped, the resource will be permitted to return the value it holds
-/// also.
+/// also.  The documentation under [`SsrSignalResource::write_only`]
+/// goes in-depth on how to use it correctly to ensure the read-only
+/// resource to return with the expected value that may be provided by
+/// the write-only signal.
 ///
 /// Note that this type can only be created inside components that have
 /// have the [`CoReadyCoordinator`](crate::ready::CoReadyCoordinator)
 /// be provided as a context, which typically involves having the
-/// [`SyncSsrSignal`](crate::component::SyncSsrSignal) component be one
-/// of the ancestors of the component in the view tree.
+/// [`<SyncSsrSignal/>`](crate::component::SyncSsrSignal) component be
+/// one of the ancestors of the component in the view tree.
 #[derive(Clone)]
-pub struct SsrSignalResource<T>
-where
-    T: 'static,
-{
+pub struct SsrSignalResource<T> {
     inner: Arc<SsrSignalResourceInner<T>>
 }
 
-struct SsrSignalResourceInner<T>
-where
-    T: 'static,
-{
+struct SsrSignalResourceInner<T> {
     #[cfg(feature = "ssr")]
     ready: CoReady,
-    signal_write: ArcWriteSignal<T>,
     resource: ArcResource<T>,
+    signal_write: ArcWriteSignal<T>,
 }
 
 /// The write signal created by [`SsrSignalResource::write_only`].
@@ -56,10 +53,7 @@ where
 /// When created before the `CoReadyCoordinator` notified is invoked,
 /// it will cause the paired resource to wait until a value is set
 /// through any of trait methods for updates or that this is dropped.
-pub struct SsrWriteSignal<T>
-where
-    T: 'static,
-{
+pub struct SsrWriteSignal<T> {
     #[cfg(feature = "ssr")]
     ready_sender: ReadySender,
     write_signal: ArcWriteSignal<T>,
@@ -67,7 +61,7 @@ where
 
 impl<T> SsrSignalResourceInner<T>
 where
-    T: Clone + Send + Sync + PartialEq + Serialize + DeserializeOwned,
+    T: Clone + Send + Sync + PartialEq + Serialize + DeserializeOwned + 'static,
 {
     #[track_caller]
     fn new(value: T) -> Self {
@@ -108,13 +102,19 @@ where
 
 impl<T> SsrSignalResource<T>
 where
-    T: Clone + Send + Sync + PartialEq + Serialize + DeserializeOwned,
+    T: Clone + Send + Sync + PartialEq + Serialize + DeserializeOwned + 'static,
 {
     /// Creates a signal-resource pairing with the value of type `T`.
     ///
     /// Typical use case is to clone this to where they are needed so
     /// that the read-only and write-only ends may be acquired for
     /// usage.
+    ///
+    /// ## Panics
+    /// Panics if the context of type `CoReadyCoordinator` is not found
+    /// in the current reactive owner or its ancestors.  This may be
+    /// resolved by providing the context by nesting this inside the
+    /// [`<SyncSsrSignal/>`](crate::component::SyncSsrSignal) component.
     #[track_caller]
     pub fn new(value: T) -> Self {
         Self {
@@ -141,11 +141,23 @@ impl<T> SsrSignalResource<T> {
         self.inner.resource.clone()
     }
 
-    /// Acquire a wrapper containing the underlying `ArcWriteSignal`
-    /// side of the pairing.
+    /// Acquire a `SsrWriteSignal`, which is a wrapper containing the
+    /// underlying `ArcWriteSignal` side of the pairing, along with a
+    /// `ReadySender` when under SSR.
     ///
-    /// Under SSR, holding copies of this while without dropping any of
-    /// them will ensure the paired `ArcResource` wait forever.
+    /// *Under SSR*, holding types of this while without dropping any
+    /// of them will ensure the paired `ArcResource` wait forever.
+    ///
+    /// Upon creation of the wrapper, a `ReadySender` is acquire, which
+    /// will prevent the paired resource from continuing upon receiving
+    /// the notification from the `CoReadyCoordinator` that it may be
+    /// safe to continue as it is no longer the case (due to this being
+    /// the live write signal.  Upon drop of the wrapper, it will also
+    /// notify the resource that it should return the value.  These two
+    /// implicit features alone is how the signaling mechanism works,
+    /// and misplacing the invocation of this function call will have
+    /// the consequence of the resource returning the value it holds too
+    /// early.  See usage below for details.
     ///
     /// Setting a value through the standard update methods (e.g.
     /// `set()`, `update()`) will ensure the resource be notified that
@@ -155,7 +167,74 @@ impl<T> SsrSignalResource<T> {
     /// is dropped out of scope, will also notify the resource that it
     /// may return whatever value it holds.
     ///
-    /// Under CSR this behaves exactly like an `ArcWriteSignal`.
+    /// *Under CSR* this behaves exactly like an `ArcWriteSignal`.
+    ///
+    /// # Usage
+    /// This should only be invoked inside a resource closure (or the
+    /// `Future`), but before any `.await` points - the reason for this
+    /// because the reactive system will immediately poll the `Future`
+    /// once under SSR while keeping it around for further polling.
+    /// This simply allow the allows the paired resource to stay in a
+    /// waiting state rather than simply returning when the coordinator
+    /// notifies, and this being kept alive means it also won't
+    /// prematurely allow the resource to stop waiting prematurely.
+    /// The following usage examples shows how this might look:
+    ///
+    /// ```
+    /// # use std::sync::{Arc, Mutex};
+    /// # use futures::StreamExt;
+    /// # use leptos::prelude::*;
+    /// # use leptos_sync_ssr::{component::SyncSsrSignal, signal::SsrSignalResource};
+    /// # use leptos_sync_ssr::CoReadyCoordinator;
+    /// # tokio_test::block_on(async {
+    /// #     let _ = any_spawner::Executor::init_tokio();
+    /// #     let mut tasks = Arc::new(Mutex::new(vec![]));
+    /// #     let owner = Owner::new();
+    /// #     owner.set();
+    /// #     let some_other_resource = ArcResource::new(
+    /// #         || (),
+    /// #         move |_| { async move {
+    /// #             tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    /// #         } }
+    /// #     );
+    /// #     let new_tasks = tasks.clone();
+    /// #     view! {
+    /// #         <SyncSsrSignal>{
+    /// #             let mut new_tasks = new_tasks.lock().unwrap();
+    /// #             let ssrsigres = SsrSignalResource::new(String::new());
+    /// #             let read_only = ssrsigres.read_only();
+    /// #             // this is done to simply drive the future
+    /// #             new_tasks.push(tokio::spawn(async move {
+    /// #                 assert_eq!(read_only.await, "Hello world!");
+    /// #             }));
+    /// let res = ArcResource::new(
+    ///     || (),
+    ///     {
+    ///         let ssrsigres = ssrsigres.clone();
+    ///         let some_other_resource = some_other_resource.clone();
+    ///         move |_| {
+    ///             let ws = ssrsigres.write_only();
+    ///             let some_other_resource = some_other_resource.clone();
+    ///             async move {
+    ///                 // Some future
+    ///                 let value = some_other_resource.await;
+    ///                 // update/set the value
+    ///                 ws.set("Hello world!".to_string());
+    ///             }
+    ///         }
+    ///     }
+    /// );
+    /// #             let read_only = ssrsigres.read_only();
+    /// #             new_tasks.push(tokio::spawn(async move {
+    /// #                 let foo = res.await;
+    /// #             }));
+    /// #         }</SyncSsrSignal>
+    /// #     };
+    /// #     for task in Arc::into_inner(tasks).unwrap().into_inner().unwrap() {
+    /// #         task.await.unwrap();
+    /// #     }
+    /// # });
+    /// ```
     pub fn write_only(&self) -> SsrWriteSignal<T> {
         SsrWriteSignal {
             write_signal: self.inner.signal_write.clone(),
@@ -202,5 +281,14 @@ impl<T> Notify for SsrWriteSignal<T> {
         // is now safe for the reader to continue execution
         #[cfg(feature = "ssr")]
         self.ready_sender.complete();
+    }
+}
+
+impl<T> Debug for SsrSignalResource<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        f.debug_struct("SsrSignalResource")
+            .field("read_only", &self.inner.resource)
+            .field("write_only", &self.inner.signal_write)
+            .finish()
     }
 }

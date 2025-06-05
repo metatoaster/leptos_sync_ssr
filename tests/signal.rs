@@ -1,10 +1,7 @@
 use std::time::Duration;
 
 use leptos::prelude::*;
-use leptos_sync_ssr::{
-    component::SyncSsrSignal,
-    signal::{SsrSignalResource, SsrWriteSignal},
-};
+use leptos_sync_ssr::{component::SyncSsrSignal, signal::SsrSignalResource};
 use tokio::time::timeout;
 
 #[cfg(feature = "ssr")]
@@ -89,6 +86,31 @@ fn SetterUsed(mode: Option<Mode>) -> impl IntoView {
         </Suspense>
     }
 }
+
+#[component]
+fn SetterInSuspense() -> impl IntoView {
+    let sr = expect_context::<SsrSignalResource<String>>();
+    // TODO explain in more detail why this doesn't work
+    // simply because the suspend is disposed in SSR in the first pass upon encounter
+    // of await which disposes the write signal, causing the resource to resolve.
+    view! {
+        <Suspense>
+        {move || {
+            let sr = sr.clone();
+            Suspend::new(async move {
+                let ws = sr.write_only();
+                // a timeout here to emulate server function delay.
+                #[cfg(feature = "ssr")]
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                let value = "Hello world!";
+                ws.set(value.to_string());
+                format!("resource write signal setting value: {value}")
+            })
+        }}
+        </Suspense>
+    }
+}
+
 
 /*
 #[component]
@@ -181,6 +203,27 @@ async fn missing_co_ready_coordinator() {
 
 #[cfg(feature = "ssr")]
 #[tokio::test]
+async fn render_setter_set_in_suspense() {
+    let _owner = init_renderer();
+
+    let app = view! {
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <Indicator />
+                <SetterInSuspense />
+            }
+        }</SyncSsrSignal>
+    };
+    // assert_eq!(
+    //     app.to_html_stream_in_order().collect::<String>().await,
+    //     "<p>Indicator is: <!>Hello world!</p>resource write signal setting value: Hello world!<!>",
+    // );
+}
+
+#[cfg(feature = "ssr")]
+#[tokio::test]
 async fn render_setter_set() {
     let _owner = init_renderer();
 
@@ -263,10 +306,94 @@ async fn render_setter_not_set() {
     );
 }
 
+#[cfg(feature = "ssr")]
+#[tokio::test]
+async fn setter_set_render() {
+    let _owner = init_renderer();
+
+    let app = view! {
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <SetterUsed mode=Some(Mode::Set) />
+                <Indicator />
+            }
+        }</SyncSsrSignal>
+    };
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "resource write signal setting value: Hello world!<p>Indicator is: <!>Hello world!</p><!>",
+    );
+}
+
+#[cfg(feature = "ssr")]
+#[tokio::test]
+async fn setter_update_render() {
+    let _owner = init_renderer();
+
+    let app = view! {
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <SetterUsed mode=Some(Mode::Update) />
+                <Indicator />
+            }
+        }</SyncSsrSignal>
+    };
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "resource write signal pushed value: Hello world!<p>Indicator is: <!>Hello world!</p><!>",
+    );
+}
+
+#[cfg(feature = "ssr")]
+#[tokio::test]
+async fn setter_update_untracked_render() {
+    let _owner = init_renderer();
+
+    let app = view! {
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <SetterUsed mode=Some(Mode::UpdateUntracked) />
+                <Indicator />
+            }
+        }</SyncSsrSignal>
+    };
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "resource write signal pushed value (untracked): Hello world!<p>Indicator is: <!>Hello world!</p><!>",
+    );
+}
+
+#[cfg(feature = "ssr")]
+#[tokio::test]
+async fn setter_not_set_render() {
+    let _owner = init_renderer();
+
+    let app = view! {
+        <SyncSsrSignal>{
+            let sr = SsrSignalResource::new(String::new());
+            provide_context(sr.clone());
+            view! {
+                <SetterUsed mode=None />
+                <Indicator />
+            }
+        }</SyncSsrSignal>
+    };
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "resource write signal setting no value<p>Indicator is: <!> </p><!>",
+    );
+}
+
 /*
 #[cfg(feature = "ssr")]
 #[tokio::test]
-async fn render_misused_write_only_cloned() {
+async fn misused_write_only_cloned() {
     let _owner = init_renderer();
 
     let app = view! {
@@ -295,7 +422,7 @@ async fn render_misused_write_only_cloned() {
 
 #[cfg(feature = "ssr")]
 #[tokio::test]
-async fn render_misused_write_only_created_late() {
+async fn misused_write_only_created_late() {
     let _owner = init_renderer();
 
     let app = view! {
@@ -318,7 +445,7 @@ async fn render_misused_write_only_created_late() {
 
 #[cfg(feature = "ssr")]
 #[tokio::test]
-async fn render_misused_write_only_kept_alive() {
+async fn misused_write_only_kept_alive_deadlocks() {
     let _owner = init_renderer();
 
     let app = view! {
@@ -342,7 +469,7 @@ async fn render_misused_write_only_kept_alive() {
 
 #[cfg(feature = "ssr")]
 #[tokio::test]
-async fn render_no_setter() {
+async fn render_indicator_only() {
     let _owner = init_renderer();
 
     let app = view! {

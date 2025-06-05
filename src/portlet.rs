@@ -1,46 +1,44 @@
 //! Provides generic helpers to build portlets on Leptos
 //!
-//! Since there are some common UI design patterns that involve placing
-//! elements before the main article while requiring data that's not
-//! available until then, and that those patterns largely can be implemented
-//! as portlets, this module provides some common helpers that will allow
-//! the portlets be placed anywhere in the view tree as this implementation
-//! implements the most conservative execution path that will cater to any
-//! valid positions in the view tree.
+//! A common UI design patterns that involve having common, optionally rendered
+//! comopnents rendered on a page; in the context of web portals, this concept
+//! is known as portlets.  Portlets may display additional information from the
+//! main article, and its placement may come earlier in the view tree.  This
+//! has the consequence where a standard signal like `RwSignal` may fail to
+//! return the expected value under SSR as it would be rendered before the data
+//! provided by the article is available.
 //!
-//! For the most simple case, a simple [`RwSignal`] with a simple direct
-//! rendering may be all that is required.  This, much more convoluted
-//! implementation is really only required if you don't know where exactly
-//! where the element will ultimately placed in the view tree, but you just
-//! want to write the least possible amount of code as possible to get the
-//! desired results working no matter the UI element is physically located
-//! in the view tree.
-//!
-//! In other words, this is the jack of all trades implementation, and will
-//! not function as the optimized implementation for all cases.
+//! This module provides [`PortletCtx`] which contains a few methods that works
+//! together to implement the portlet UI pattern in a fully managed manner.
+//! Given that it makes use of [`SsrSignalResource`] internally, the resulting
+//! component responsible for the rendering may be placed anywhere on the view
+//! tree, as the resource providing the data will wait for the signal be
+//! written to first, and only if necessary to not lock the rendering up when
+//! under SSR.  Naturally, a [`SyncSsrSignal`](crate::component::SyncSsrSignal)
+//! must be placed in a higher level of the view tree before `PortletCtx` may
+//! be [provided](PortletCtx::provide) as a context.
+
 use std::future::IntoFuture;
 
 use leptos::prelude::*;
 use leptos::server_fn::error::FromServerFnError;
 
-#[cfg(feature = "ssr")]
-use crate::Ready;
+use crate::signal::{SsrSignalResource, SsrWriteSignal};
 
 /// A generic portlet context.
 ///
-/// Internally, this contains an [`ArcResource`] that will be provided as a
-/// context throughout a typical Leptos `App`, and a refresh signal to
-/// indicate when a refresh is required, e.g. after a new resource has been
-/// set or have been cleared.  The usage of a resource informs Leptos that
-/// additional asynchronous waiting could be done, and to allow passing of
-/// raw resource definitions into here.
-#[derive(Clone, Debug, Default)]
-pub struct PortletCtx<T, E = ServerFnError> {
-    inner: Option<ArcResource<Result<T, E>>>,
-    refresh: ArcRwSignal<usize>,
+/// Internally this contains an [`SsrSignalResource<Option<T>>`].  While no
+/// direct access to that underlying is provided, its write signal may be
+/// accessed through [`PortletCtx::expect_write`], subjected to the usual
+/// guidelines around the use of `SsrSignalResource`.  The only way this may be
+/// constructed is through the [`PortletCtx::provide`] method to encourage
+/// consistent usage pattern.
+#[derive(Clone, Debug)]
+pub struct PortletCtx<T> {
+    inner: SsrSignalResource<Option<T>>,
 }
 
-impl<T, E> PortletCtx<T, E>
+impl<T> PortletCtx<T>
 where
     T: serde::Serialize
         + serde::de::DeserializeOwned
@@ -51,68 +49,58 @@ where
         + IntoRender
         + 'static,
     <T as leptos::prelude::IntoRender>::Output: RenderHtml + Send + 'static,
-    E: serde::Serialize
-        + serde::de::DeserializeOwned
-        + Clone
-        + Send
-        + Sync
-        + FromServerFnError
-        + From<ServerFnError>,
-    ArcResource<Result<Option<T>, E>>: IntoFuture<Output = Result<Option<T>, E>>,
-    <ArcResource<Result<Option<T>, E>> as IntoFuture>::IntoFuture: Send,
-    Suspend<Result<Option<AnyView>, E>>: RenderHtml + Render,
+    // ArcResource<Result<Option<T>, E>>: IntoFuture<Output = Result<Option<T>, E>>,
+    // <ArcResource<Result<Option<T>, E>> as IntoFuture>::IntoFuture: Send,
+    Suspend<Option<AnyView>>: RenderHtml + Render,
 {
-    /// Clears the resource for the portlet.
+    /// Clears the value for the portlet.
     ///
     /// Upon invocation of this method, the rendering of the portlet
     /// will be `None` through the associated function [`render`](
-    /// PortletCtx::render).
-    pub fn clear(&mut self) {
-        // leptos::logging::log!("PortletCtx clear");
-        self.refresh.try_update(|n| *n += 1);
-        self.inner = None;
-    }
-
-    /// Set the resource for this portlet.
-    ///
-    /// This would assign an `ArcResource` that will ultimately provide
-    /// a value of type `Result<T, E>`.
-    pub fn set(&mut self, value: ArcResource<Result<T, E>>) {
-        // leptos::logging::log!("PortletCtx set");
-        self.refresh.try_update(|n| *n += 1);
-        self.inner = Some(value);
+    /// PortletCtx::render), which functions to render nothing, hence
+    /// implements the optionally rendered part.
+    pub fn clear() {
+        if let Some(ctx) = use_context::<PortletCtx<T>>() {
+            leptos::logging::log!("setting None");
+            ctx.inner.write_only().set(None);
+        }
     }
 
     /// Provide this as a context for a Leptos `App`.
     ///
     /// The reason why there is no constructor provided and only done so
-    /// via signal is to have these contexts function as a singleton.
+    /// via signal is to have the ability for these contexts to be
+    /// provided as singletons, as portlets are typically unique for
+    /// ease of management.
+    ///
+    /// ## Panics
+    /// Given the use of `SsrSignalResource`, this panics if the context
+    /// type `CoReadyCoordinator` is not found in the current reactive
+    /// owner or its ancestors.  This may be resolved by providing the
+    /// context by nesting this function call inside the
+    /// [`<SyncSsrSignal/>`](crate::component::SyncSsrSignal) component.
     pub fn provide() {
-        let (rs, ws) = arc_signal(PortletCtx::<T, E> {
-            inner: None,
-            refresh: ArcRwSignal::new(0),
+        // TODO ensure the singleton aspect.
+        provide_context(PortletCtx::<T> {
+            inner: SsrSignalResource::new(None),
         });
-        provide_context(rs);
-        provide_context(ws);
     }
 
-    /// Acquire via [`expect_context`] the write signal for this.
-    ///
-    /// Using this associated function will ensure the correct write
-    /// signal will be returned.
-    pub fn expect_write() -> ArcWriteSignal<PortletCtx<T, E>> {
-        expect_context::<ArcWriteSignal<PortletCtx<T, E>>>()
+    /// Get the write-only signal underlying the portlet ctx.
+    pub fn write_only(&self) -> SsrWriteSignal<Option<T>> {
+        self.inner
+            .write_only()
     }
 
     /// A generic portlet renderer via this generic portlet context.
     ///
     /// This renderer simplifies the creation of portlet components based
     /// upon the underlying `T`, for all `T` that implements `IntoRender`.
-    /// For usage in a Leptos `App`, it expects that the [`PortletCtx<T, E>`]
-    /// be [provided](PortletCtx::provide) as `ArcReadSignal<PortletCtx<T, E>>`.
-    /// The implementation would ensure the resource assignment will be
-    /// waited upon before usage, provided that the component invoking this
-    /// has a [`SyncSsr`](crate::component::SyncSsr) up its view tree.
+    /// For usage in a Leptos `App`, it expects that the [`PortletCtx<T>`]
+    /// be [provided](PortletCtx::provide).  The underlying
+    /// [`SsrSignalResource`] will ensure any correctly set value be rendered,
+    /// provided that the component invoking this has the required
+    /// [`SyncSsrSignal`](crate::component::SyncSsrSignal) up its view tree.
     ///
     /// Typical usage may look like this.
     ///
@@ -142,61 +130,20 @@ where
     ///     <PortletCtx<Nav>>::render()
     /// }
     /// ```
+    ///
+    /// ## Panics
+    /// Panics if the underlying `PortletCtx<T>` is not found.
     pub fn render() -> impl IntoView {
-        #[cfg(feature = "ssr")]
-        let ready = Ready::handle();
-
-        let rs = expect_context::<ArcReadSignal<PortletCtx<T, E>>>();
-        let refresh = rs.get_untracked().refresh;
-        let resource = ArcResource::new_blocking(
-            {
-                move || {
-                    // leptos::logging::log!("into_render suspend resource signaled!");
-                    refresh.get()
-                }
-            },
-            // move |id| {
-            move |_| {
-                // leptos::logging::log!("refresh id {id}");
-                #[cfg(feature = "ssr")]
-                let ready = ready.clone();
-                let rs = rs.clone();
-                async move {
-                    // leptos::logging::log!("PortletCtxRender Suspend resource entering");
-                    // leptos::logging::log!("refresh id {id}");
-                    #[cfg(feature = "ssr")]
-                    ready.subscribe().wait().await;
-                    let ctx = rs.get_untracked();
-                    // leptos::logging::log!("portlet_ctx.inner = {:?}", ctx.inner);
-                    // let result = if let Some(resource) = ctx.inner {
-                    if let Some(resource) = ctx.inner {
-                        Ok(Some(resource.await?))
-                    } else {
-                        Ok(None)
-                    }
-                    // };
-                    // leptos::logging::log!("PortletCtxRender Suspend resource exiting");
-                    // result
-                }
-            },
-        );
-
+        let ctx = expect_context::<PortletCtx<T>>();
+        let resource = ctx.inner.read_only();
         let suspend = move || {
             let resource = resource.clone();
             Suspend::new(async move {
                 // leptos::logging::log!("PortletCtxRender Suspend entering");
-                let result = resource.await?;
-                // let result = if let Some(result) = result {
-                if let Some(result) = result {
-                    // leptos::logging::log!("returning actual view");
-                    Ok::<_, E>(Some(result.into_render().into_any()))
-                } else {
-                    // leptos::logging::log!("returning empty view");
-                    Ok(None)
-                }
-                // };
-                // leptos::logging::log!("PortletCtxRender Suspend exiting");
-                // result
+                let result = resource.await;
+                Some(result?
+                    .into_render()
+                    .into_any())
             })
         };
 
