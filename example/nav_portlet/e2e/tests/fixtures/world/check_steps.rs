@@ -40,7 +40,7 @@ async fn i_can_see_the_following_links_under_navigation(
 }
 
 #[then(regex = "^I will not find the following links under Navigation$")]
-async fn i_will_not_find_the_following_links_anywhere(
+async fn i_will_not_find_the_following_links_anywhere_under_navigation(
     world: &mut AppWorld,
     step: &Step,
 ) -> Result<()> {
@@ -50,6 +50,16 @@ async fn i_will_not_find_the_following_links_anywhere(
             check::link_absent_under_navigation(client, &row[0]).await?;
         }
     }
+    Ok(())
+}
+
+#[then(regex = "^I will not find the Navigation section anywhere$")]
+#[then(regex = "^I will find the Navigation section disappear$")]
+async fn i_will_not_find_the_navigation_section_anywhere(
+    world: &mut AppWorld,
+) -> Result<()> {
+    let client = &world.client;
+    check::nav_portlet_absent(client).await?;
     Ok(())
 }
 

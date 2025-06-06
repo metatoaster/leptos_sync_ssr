@@ -32,3 +32,22 @@ Feature: The navigation portlet hydrates correctly
             | A quick summary on...          |
             | The top thousand...            |
             | Beware of...                   |
+
+    Scenario: Navigation to home should drop portlets
+        Given I see the app
+        And I access the following links in the following order
+            | Authors                 |
+            | Albert                  |
+        When I refresh the browser
+        And I access the link Home
+        Then I will find the Navigation section disappear
+
+    Scenario: Navigating between authors should maintain reactive info
+        Given I see the app
+        And I access the following links in the following order
+            | Authors                 |
+            | Albert                  |
+        When I refresh the browser
+        And I access the link Dorothy
+        And once I see the author overview is populated
+        Then I can see the entity id is dorothy

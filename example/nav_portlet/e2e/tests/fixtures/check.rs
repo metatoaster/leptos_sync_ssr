@@ -52,3 +52,12 @@ pub async fn link_absent_under_navigation(
     assert!(result.is_err());
     Ok(())
 }
+
+pub async fn nav_portlet_absent(
+    client: &Client,
+) -> Result<()> {
+    let element = find::element_with_selector(client, "aside").await?;
+    let result = element.find(Locator::Id("NavPortlet")).await;
+    assert!(result.is_err());
+    Ok(())
+}

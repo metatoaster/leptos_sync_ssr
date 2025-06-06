@@ -1,6 +1,14 @@
 use anyhow::{anyhow, Result};
 use fantoccini::{elements::Element, Client, Locator};
 
+pub async fn element_with_selector(client: &Client, selector: &str) -> Result<Element> {
+    client
+        .wait()
+        .for_element(Locator::Css(selector))
+        .await
+        .map_err(|_| anyhow!("selector `{}` found nothing", selector))
+}
+
 pub async fn element_at_id(client: &Client, id: &str) -> Result<Element> {
     client
         .wait()

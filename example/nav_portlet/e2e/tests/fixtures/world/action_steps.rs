@@ -10,6 +10,7 @@ async fn i_open_the_app(world: &mut AppWorld) -> Result<()> {
     Ok(())
 }
 
+#[given(regex = "^I access the link (.*)$")]
 #[when(regex = "^I access the link (.*)$")]
 async fn i_access_the_link(world: &mut AppWorld, text: String) -> Result<()> {
     let client = &world.client;
@@ -25,6 +26,7 @@ async fn i_refresh_the_browser(world: &mut AppWorld) -> Result<()> {
     Ok(())
 }
 
+#[given(expr = "I access the following links in the following order")]
 #[when(expr = "I access the following links in the following order")]
 async fn i_access_the_following_links(
     world: &mut AppWorld,
