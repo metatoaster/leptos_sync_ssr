@@ -18,7 +18,7 @@
 //! must be placed in a higher level of the view tree before `PortletCtx` may
 //! be [provided](PortletCtx::provide) as a context.
 
-use std::future::IntoFuture;
+use std::future::Future;
 
 use leptos::prelude::*;
 use leptos::server_fn::error::FromServerFnError;
@@ -59,11 +59,8 @@ where
     /// will be `None` through the associated function [`render`](
     /// PortletCtx::render), which functions to render nothing, hence
     /// implements the optionally rendered part.
-    pub fn clear() {
-        if let Some(ctx) = use_context::<PortletCtx<T>>() {
-            leptos::logging::log!("setting None");
-            ctx.inner.write_only().set(None);
-        }
+    pub fn clear(&self) {
+        self.inner.write_only().set(None);
     }
 
     /// Provide this as a context for a Leptos `App`.
@@ -86,10 +83,64 @@ where
         });
     }
 
-    /// Get the write-only signal underlying the portlet ctx.
-    pub fn write_only(&self) -> SsrWriteSignal<Option<T>> {
-        self.inner
-            .write_only()
+    /// Update the portlet with the provided data fetcher.
+    ///
+    /// Similar to resources, the fetcher generates a new `Future` to
+    /// get the latest data, and when created within a reactive context,
+    /// calling `.track()`[leptos::reactive::traits::Track::track] on
+    /// any reactive data being used will ensure they be tracked for
+    /// updates to ensure reactivity.  The result is that whenever some
+    /// data is returned, that will be used to render the portlet.  As
+    /// this is intended to work with the reactive system, this returns
+    /// a view that should be plugged into the view tree to be returned
+    /// by the component that intends to activate the portlet.
+    pub fn update_with<Fut>(&self, fetcher: impl Fn() -> Fut + Send + Sync + 'static) -> impl IntoView
+    where
+        Fut: Future<Output = Option<T>> + Send + 'static,
+    {
+        let ctx = self.clone();
+        let res = ArcResource::new(
+            || (),
+            {
+                let ctx = ctx.clone();
+                move |_| {
+                    let ws = ctx.inner.write_only();
+                    let fut = fetcher();
+                    async move {
+                        ws.set(fut.await);
+                    }
+                }
+            }
+        );
+        view! {
+            <Suspense>{
+                let ctx = ctx.clone();
+                move || {
+                    let res = res.clone();
+                    let ctx = ctx.clone();
+                    Suspend::new(async move {
+                        res.await;
+                        // This additional round-tripping seems redundant,
+                        // but is absolutely vital to ensure the original
+                        // value in the signal is also reflected under
+                        // hydration - while the resource will reflect the
+                        // later value because it can wait, the original
+                        // signal would have the default value as the
+                        // resources aren't run again during hydration,
+                        // and this descrepancy will not be resolved until
+                        // the signal is finally written to by chance of
+                        // user's interaction, which by that point it may
+                        // already result in difference in observed app
+                        // behavior between SSR+hydrate and CSR.
+                        //
+                        // TODO maybe under CSR, we can skip the resource?
+                        if let Some(value) = ctx.inner.read_only().get() {
+                            ctx.inner.write_only().set(value);
+                        }
+                    })
+                }
+            }</Suspense>
+        }
     }
 
     /// A generic portlet renderer via this generic portlet context.
@@ -139,7 +190,6 @@ where
         let suspend = move || {
             let resource = resource.clone();
             Suspend::new(async move {
-                // leptos::logging::log!("PortletCtxRender Suspend entering");
                 let result = resource.await;
                 Some(result?
                     .into_render()

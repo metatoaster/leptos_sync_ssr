@@ -394,57 +394,40 @@ pub fn AuthorTop() -> impl IntoView {
         let nav_ctx = nav_ctx.clone();
         let info_ctx = info_ctx.clone();
         move || {
-            leptos::logging::log!("<AuthorTop> on_cleanup");
-            nav_ctx.write_only().set(None);
-            info_ctx.write_only().set(None);
-            // Effect::new(move || {
-            //     leptos::logging::log!("<ArticleTop> on_cleanup Effect");
-            //     NavPortletCtx::clear();
-            //     InfoPortletCtx::clear();
-            // });
+            nav_ctx.clear();
+            info_ctx.clear();
         }
     });
 
-    let portlets = ArcResource::new(
-        || (),
-        move |_| {
-            let nav_ws = nav_ctx.write_only();
-            let info_ws = info_ctx.write_only();
-            async move {
-                nav_ws.set(
-                    authors.await
-                        .map(|authors| {
-                            authors
-                                .into_iter()
-                                .map(move |(id, author)| NavItem {
-                                    href: format!("/author/{id}/"),
-                                    text: author.name.to_string(),
-                                })
-                                .collect::<Vec<_>>()
-                                .into()
-                        })
-                        .ok()
-                );
-                info_ws.set(
-                    author.await
-                        .map(|(id, _)| Info {
-                            entity: "Author".to_string(),
-                            id,
-                        })
-                        .ok()
-                );
-            }
-        }
-    );
     view! {
-        <Transition>
-        {move || {
-            let portlets = portlets.clone();
-            Suspend::new(async move {
-                portlets.await
-            })
-        }}
-        </Transition>
+        {nav_ctx.update_with(move || {
+            authors.track();
+            async move {
+                authors.await
+                    .map(|authors| {
+                        authors
+                            .into_iter()
+                            .map(move |(id, author)| NavItem {
+                                href: format!("/author/{id}/"),
+                                text: author.name.to_string(),
+                            })
+                            .collect::<Vec<_>>()
+                            .into()
+                    })
+                    .ok()
+            }
+        })}
+        {info_ctx.update_with(move || {
+            author.track();
+            async move {
+                author.await
+                    .map(|(id, _)| Info {
+                        entity: "Author".to_string(),
+                        id,
+                    })
+                    .ok()
+            }
+        })}
         <h3>"<AuthorTop/>"</h3>
         <Outlet/>
     }
@@ -561,56 +544,40 @@ pub fn ArticleTop() -> impl IntoView {
         let info_ctx = info_ctx.clone();
         move || {
             leptos::logging::log!("<ArticleTop> on_cleanup");
-            nav_ctx.write_only().set(None);
-            info_ctx.write_only().set(None);
-            // Effect::new(move || {
-            //     leptos::logging::log!("<ArticleTop> on_cleanup Effect");
-            //     NavPortletCtx::clear();
-            //     InfoPortletCtx::clear();
-            // });
+            nav_ctx.clear();
+            info_ctx.clear();
         }
     });
 
-    let portlets = ArcResource::new(
-        || (),
-        move |_| {
-            let nav_ws = nav_ctx.write_only();
-            let info_ws = info_ctx.write_only();
-            async move {
-                nav_ws.set(
-                    articles.await
-                        .map(|articles| {
-                            articles
-                                .into_iter()
-                                .map(move |(id, article)| NavItem {
-                                    href: format!("/article/{id}/"),
-                                    text: article.title.to_string(),
-                                })
-                                .collect::<Vec<_>>()
-                                .into()
-                        })
-                        .ok()
-                );
-                info_ws.set(
-                    article.await
-                        .map(|article| Info {
-                            entity: "Article".to_string(),
-                            id: article.id.to_string(),
-                        })
-                        .ok()
-                );
-            }
-        }
-    );
     view! {
-        <Transition>
-        {move || {
-            let portlets = portlets.clone();
-            Suspend::new(async move {
-                portlets.await
-            })
-        }}
-        </Transition>
+        {nav_ctx.update_with(move || {
+            articles.track();
+            async move {
+                articles.await
+                    .map(|articles| {
+                        articles
+                            .into_iter()
+                            .map(move |(id, article)| NavItem {
+                                href: format!("/article/{id}/"),
+                                text: article.title.to_string(),
+                            })
+                            .collect::<Vec<_>>()
+                            .into()
+                    })
+                    .ok()
+            }
+        })}
+        {info_ctx.update_with(move || {
+            article.track();
+            async move {
+                article.await
+                    .map(|article| Info {
+                        entity: "Article".to_string(),
+                        id: article.id.to_string(),
+                    })
+                    .ok()
+            }
+        })}
         <h3>"<ArticleTop/>"</h3>
         <Outlet/>
     }
