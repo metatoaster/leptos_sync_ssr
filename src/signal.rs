@@ -8,7 +8,10 @@ use std::{
 use leptos::{
     reactive::{
         traits::{DefinedAt, Get, GetUntracked, IsDisposed, Notify, UntrackableGuard, Write},
-        signal::{ArcReadSignal, ArcRwSignal, ArcWriteSignal, guards::UntrackedWriteGuard},
+        signal::{
+	     ArcRwSignal, ArcWriteSignal,
+            guards::{WriteGuard, UntrackedWriteGuard},
+        },
     },
     server::ArcResource,
 };
@@ -50,10 +53,18 @@ struct SsrSignalResourceInner<T> {
 
 /// The write signal created by [`SsrSignalResource::write_only`].
 ///
-/// When created before the `CoReadyCoordinator` notified is invoked,
-/// it will cause the paired resource to wait until a value is set
-/// through any of trait methods for updates or that this is dropped.
+/// When created before the `CoReadyCoordinator` notified is invoked, it
+/// will cause the paired resource to wait until a value is set through
+/// any of trait methods for updates or that this is dropped.
 pub struct SsrWriteSignal<T> {
+    inner: Arc<SsrWriteSignalInner<T>>,
+}
+
+struct SsrWriteSignalNotifier<T> {
+    inner: Arc<SsrWriteSignalInner<T>>,
+}
+
+struct SsrWriteSignalInner<T> {
     #[cfg(feature = "ssr")]
     ready_sender: ReadySender,
     write_signal: ArcWriteSignal<T>,
@@ -77,15 +88,19 @@ where
             {
                 #[cfg(feature = "ssr")]
                 let ready = ready.clone();
-                move |_| {
+                move |original| {
                     #[cfg(feature = "ssr")]
                     let subscriber = ready.subscribe();
                     let signal_read = signal_read.clone();
                     async move {
-                        // TODO need to insert debug to check number of broadcast/waiters
                         #[cfg(feature = "ssr")]
                         subscriber.wait().await;
-                        signal_read.get_untracked()
+                        // given that the signal may provide a different value
+                        // to what was originally passed by the time the
+                        // subscriber finishes waiting, try to get a new value.
+                        // using `try_get_untracked` to work around potential
+                        // disposal issues.
+                        signal_read.try_get_untracked().unwrap_or(original)
                     }
                 }
             },
@@ -237,10 +252,25 @@ impl<T> SsrSignalResource<T> {
     /// ```
     pub fn write_only(&self) -> SsrWriteSignal<T> {
         SsrWriteSignal {
-            write_signal: self.inner.signal_write.clone(),
-            #[cfg(feature = "ssr")]
-            ready_sender: self.inner.ready.to_ready_sender(),
+            inner: Arc::new(SsrWriteSignalInner {
+                write_signal: self.inner.signal_write.clone(),
+                #[cfg(feature = "ssr")]
+                ready_sender: self.inner.ready.to_ready_sender(),
+            })
         }
+    }
+
+    pub fn write_only_untracked(&self) -> ArcWriteSignal<T> {
+        self.inner.signal_write.clone()
+    }
+}
+
+impl<T> Debug for SsrSignalResource<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        f.debug_struct("SsrSignalResource")
+            .field("read_only", &self.inner.resource)
+            .field("write_only", &self.inner.signal_write)
+            .finish()
     }
 }
 
@@ -250,12 +280,19 @@ impl<T: 'static> Write for SsrWriteSignal<T> {
     type Value = T;
 
     fn try_write(&self) -> Option<impl UntrackableGuard<Target = Self::Value>> {
-        self.write_signal.try_write()
+        // Include the use of our notifier and create our own guard with it
+        let notifier = SsrWriteSignalNotifier {
+            inner: self.inner.clone(),
+        };
+        self.inner
+            .write_signal
+            .try_write_untracked()
+            .map(|guard| WriteGuard::new(notifier, guard))
     }
 
     #[allow(refining_impl_trait)]
     fn try_write_untracked(&self) -> Option<UntrackedWriteGuard<Self::Value>> {
-        self.write_signal.try_write_untracked()
+        self.inner.write_signal.try_write_untracked()
     }
 }
 
@@ -263,7 +300,7 @@ impl<T> DefinedAt for SsrWriteSignal<T> {
     fn defined_at(&self) -> Option<&'static Location<'static>> {
         // TODO just simply leverage the underlying implementation;
         // TODO figure out if we want to actually implement this
-        self.write_signal.defined_at()
+        self.inner.write_signal.defined_at()
     }
 }
 
@@ -276,19 +313,21 @@ impl<T> IsDisposed for SsrWriteSignal<T> {
 
 impl<T> Notify for SsrWriteSignal<T> {
     fn notify(&self) {
-        self.write_signal.notify();
+        self.inner.write_signal.notify();
         // assume when this is marked dirty, a change has happened and so it
         // is now safe for the reader to continue execution
         #[cfg(feature = "ssr")]
-        self.ready_sender.complete();
+        self.inner.ready_sender.complete();
     }
 }
 
-impl<T> Debug for SsrSignalResource<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        f.debug_struct("SsrSignalResource")
-            .field("read_only", &self.inner.resource)
-            .field("write_only", &self.inner.signal_write)
-            .finish()
+impl<T> Notify for SsrWriteSignalNotifier<T> {
+    fn notify(&self) {
+        leptos::logging::log!("[!] SsrWriteSignalNotifier::notify");
+        self.inner.write_signal.notify();
+        // assume when this is marked dirty, a change has happened and so it
+        // is now safe for the reader to continue execution
+        #[cfg(feature = "ssr")]
+        self.inner.ready_sender.complete();
     }
 }

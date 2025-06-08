@@ -60,7 +60,7 @@ where
     /// PortletCtx::render), which functions to render nothing, hence
     /// implements the optionally rendered part.
     pub fn clear(&self) {
-        self.inner.write_only().set(None);
+        self.inner.write_only_untracked().set(None);
     }
 
     /// Provide this as a context for a Leptos `App`.
@@ -134,8 +134,8 @@ where
                         // behavior between SSR+hydrate and CSR.
                         //
                         // TODO maybe under CSR, we can skip the resource?
-                        if let Some(value) = ctx.inner.read_only().get() {
-                            ctx.inner.write_only().set(value);
+                        if let Some(value) = ctx.inner.read_only().get_untracked() {
+                            ctx.inner.write_only_untracked().set(value);
                         }
                     })
                 }

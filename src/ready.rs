@@ -411,12 +411,10 @@ impl ReadyInner {
 
     // this creates a new sender
     pub(crate) fn to_ready_sender(&self) -> ReadySender {
-        dbg!(self.sender.sender_count());
-        let result = ReadySender {
+        dbg!("ReadyInner::to_ready_sender()");
+        ReadySender {
             inner: self.clone()
-        };
-        dbg!(self.sender.sender_count());
-        result
+        }
     }
 }
 
