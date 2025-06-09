@@ -320,7 +320,7 @@ pub fn AuthorRoutes() -> impl MatchNestedRoutes + Clone {
 
 #[component]
 pub fn AuthorContainer() -> impl IntoView {
-    provide_context(Resource::new_blocking(
+    provide_context(ArcResource::new_blocking(
         move || (),
         move |_| async move { list_authors().await },
     ));
@@ -333,8 +333,9 @@ pub fn AuthorContainer() -> impl IntoView {
 
 #[component]
 pub fn AuthorListing() -> impl IntoView {
-    let resource = expect_context::<Resource<Result<Vec<(String, Author)>, ServerFnError>>>();
+    let resource = expect_context::<ArcResource<Result<Vec<(String, Author)>, ServerFnError>>>();
     let author_listing = move || {
+        let resource = resource.clone();
         Suspend::new(async move {
             resource.await.map(|authors| {
                 authors
@@ -365,7 +366,7 @@ struct AuthorTopParams {
 #[component]
 pub fn AuthorTop() -> impl IntoView {
     let params = use_params::<AuthorTopParams>();
-    provide_context(Resource::new_blocking(
+    provide_context(ArcResource::new_blocking(
         move || params.get().map(|p| p.name),
         move |name| async move {
             match name {
@@ -374,7 +375,7 @@ pub fn AuthorTop() -> impl IntoView {
             }
         },
     ));
-    provide_context(Resource::new_blocking(
+    provide_context(ArcResource::new_blocking(
         move || params.get().map(|p| p.name),
         move |name| async move {
             match name {
@@ -384,8 +385,8 @@ pub fn AuthorTop() -> impl IntoView {
         },
     ));
 
-    let author = expect_context::<Resource<Result<(String, Author), ServerFnError>>>();
-    let authors = expect_context::<Resource<Result<Vec<(String, Author)>, ServerFnError>>>();
+    let author = expect_context::<ArcResource<Result<(String, Author), ServerFnError>>>();
+    let authors = expect_context::<ArcResource<Result<Vec<(String, Author)>, ServerFnError>>>();
     let nav_ctx = expect_context::<NavPortletCtx>();
     let info_ctx = expect_context::<InfoPortletCtx>();
 
@@ -401,6 +402,7 @@ pub fn AuthorTop() -> impl IntoView {
 
     view! {
         {nav_ctx.update_with(move || {
+            let authors = authors.clone();
             authors.track();
             async move {
                 authors.await
@@ -418,6 +420,7 @@ pub fn AuthorTop() -> impl IntoView {
             }
         })}
         {info_ctx.update_with(move || {
+            let author = author.clone();
             author.track();
             async move {
                 author.await
@@ -435,8 +438,9 @@ pub fn AuthorTop() -> impl IntoView {
 
 #[component]
 pub fn AuthorOverview() -> impl IntoView {
-    let resource = expect_context::<Resource<Result<(String, Author), ServerFnError>>>();
+    let resource = expect_context::<ArcResource<Result<(String, Author), ServerFnError>>>();
     let author = move || {
+        let resource = resource.clone();
         Suspend::new(async move {
             resource.await.map(move |(id, author)| {
                 view! {
@@ -479,7 +483,7 @@ pub fn ArticleRoutes() -> impl MatchNestedRoutes + Clone {
 
 #[component]
 pub fn ArticleContainer() -> impl IntoView {
-    provide_context(Resource::new_blocking(
+    provide_context(ArcResource::new_blocking(
         move || (),
         move |_| async move { list_articles().await },
     ));
@@ -492,8 +496,9 @@ pub fn ArticleContainer() -> impl IntoView {
 
 #[component]
 pub fn ArticleListing() -> impl IntoView {
-    let resource = expect_context::<Resource<Result<Vec<(u32, Article)>, ServerFnError>>>();
+    let resource = expect_context::<ArcResource<Result<Vec<(u32, Article)>, ServerFnError>>>();
     let article_listing = move || {
+        let resource = resource.clone();
         Suspend::new(async move {
             resource.await.map(|articles| {
                 articles
@@ -524,7 +529,7 @@ struct ArticleTopParams {
 #[component]
 pub fn ArticleTop() -> impl IntoView {
     let params = use_params::<ArticleTopParams>();
-    provide_context(Resource::new_blocking(
+    provide_context(ArcResource::new_blocking(
         move || params.get().map(|p| p.id),
         move |id| async move {
             match id {
@@ -534,8 +539,8 @@ pub fn ArticleTop() -> impl IntoView {
         },
     ));
 
-    let articles = expect_context::<Resource<Result<Vec<(u32, Article)>, ServerFnError>>>();
-    let article = expect_context::<Resource<Result<Article, ServerFnError>>>();
+    let articles = expect_context::<ArcResource<Result<Vec<(u32, Article)>, ServerFnError>>>();
+    let article = expect_context::<ArcResource<Result<Article, ServerFnError>>>();
     let nav_ctx = expect_context::<NavPortletCtx>();
     let info_ctx = expect_context::<InfoPortletCtx>();
 
@@ -543,7 +548,7 @@ pub fn ArticleTop() -> impl IntoView {
         let nav_ctx = nav_ctx.clone();
         let info_ctx = info_ctx.clone();
         move || {
-            leptos::logging::log!("<ArticleTop> on_cleanup");
+            // leptos::logging::log!("<ArticleTop> on_cleanup");
             nav_ctx.clear();
             info_ctx.clear();
         }
@@ -551,6 +556,7 @@ pub fn ArticleTop() -> impl IntoView {
 
     view! {
         {nav_ctx.update_with(move || {
+            let articles = articles.clone();
             articles.track();
             async move {
                 articles.await
@@ -568,6 +574,7 @@ pub fn ArticleTop() -> impl IntoView {
             }
         })}
         {info_ctx.update_with(move || {
+            let article = article.clone();
             article.track();
             async move {
                 article.await
@@ -585,8 +592,9 @@ pub fn ArticleTop() -> impl IntoView {
 
 #[component]
 pub fn ArticleView() -> impl IntoView {
-    let resource = expect_context::<Resource<Result<Article, ServerFnError>>>();
+    let resource = expect_context::<ArcResource<Result<Article, ServerFnError>>>();
     let article = move || {
+        let resource = resource.clone();
         Suspend::new(async move {
             resource.await.map(move |article| {
                 let author_href = format!("/author/{}/", article.author_name);
@@ -616,8 +624,9 @@ pub fn ArticleView() -> impl IntoView {
 
 #[component]
 pub fn ArticleComments() -> impl IntoView {
-    let resource = expect_context::<Resource<Result<Article, ServerFnError>>>();
+    let resource = expect_context::<ArcResource<Result<Article, ServerFnError>>>();
     let article = move || {
+        let resource = resource.clone();
         Suspend::new(async move {
             resource.await.map(move |article| {
                 view! {
@@ -636,8 +645,9 @@ pub fn ArticleComments() -> impl IntoView {
 
 #[component]
 pub fn ArticleHistory() -> impl IntoView {
-    let resource = expect_context::<Resource<Result<Article, ServerFnError>>>();
+    let resource = expect_context::<ArcResource<Result<Article, ServerFnError>>>();
     let article = move || {
+        let resource = resource.clone();
         Suspend::new(async move {
             resource.await.map(move |article| {
                 view! {
