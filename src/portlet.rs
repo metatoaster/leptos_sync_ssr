@@ -125,7 +125,7 @@ where
                 let ctx = ctx.clone();
                 let fetcher = fetcher.clone();
                 move |_| {
-                    let ws = ctx.inner.write_only_manual();
+                    let ws = ctx.inner.write_only();
                     let fut = fetcher();
                     async move {
                         ws.set(fut.await);

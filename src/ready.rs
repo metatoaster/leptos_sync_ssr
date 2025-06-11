@@ -68,13 +68,12 @@ pub struct CoReady {
 #[derive(Clone)]
 pub(crate) struct ReadyInner {
     sender: Sender<Option<bool>>,
-    manual_complete: Arc<RwLock<bool>>,
-    // TODO determine if/how to leverage duplicated sender for wait condition
-    // this is applicable for setup at components so that it takes more than
-    // one sender before the subscriber will actually wait in the case for
-    // the signal resource
-    //
-    // sender_threshold: usize,
+    // This determines whether the next flag may be armed
+    manual_complete: bool,
+    // This becomes armed if the above is set, and it will keep affected
+    // `CoReadySubscriber` waiting after being notified of the first ready
+    // state.
+    manual_complete_armed: Arc<RwLock<bool>>,
 }
 
 #[cfg(feature = "ssr")]
@@ -217,6 +216,16 @@ impl CoReady {
     /// the current reactive owner or its ancestors.
     #[track_caller]
     pub fn new() -> Self {
+        Self::new_with_options(false)
+    }
+
+    #[track_caller]
+    pub fn new_manually_completed() -> Self {
+        Self::new_with_options(true)
+    }
+
+    #[track_caller]
+    pub fn new_with_options(manual_complete: bool) -> Self {
         let location = std::panic::Location::caller();
         // FIXME a better error message
         let coordinator = use_context::<CoReadyCoordinator>().unwrap_or_else(|| {
@@ -224,7 +233,7 @@ impl CoReady {
         });
         let (sender, _) = channel(None);
         let result = Self {
-            inner: Arc::new(sender.into()),
+            inner: Arc::new(ReadyInner::new(sender, manual_complete)),
             _phantom: Phantom,
         };
         coordinator.register(result.clone());
@@ -246,9 +255,7 @@ impl CoReady {
         }
     }
 
-    pub(crate) fn to_ready_sender(&self, manual_complete: bool) -> ReadySender {
-        let mut mc = self.inner.manual_complete.write().expect("not poisoned");
-        *mc = manual_complete;
+    pub(crate) fn to_ready_sender(&self) -> ReadySender {
         self.inner.to_ready_sender()
     }
 }
@@ -381,38 +388,33 @@ impl ReadySubscriptionInner {
 #[cfg(feature = "ssr")]
 impl CoReadySubscriptionInner {
     pub(crate) async fn wait_inner(mut self) {
-        dbg!(self.ready.inner.sender.sender_count());
         let sender = &self.ready.inner.sender;
-        let co_ready = self.ready.inner.clone();
+        let manual_complete = self.ready.inner.manual_complete;
         self
             .receiver
             .wait_for(|v| {
-                let manual_complete = *co_ready.manual_complete.read().expect("not poisoned");
                 let v = *v;
-                let cond = v == Some(true) ||
-                    (!manual_complete && v == Some(false) && sender.sender_count() == 1);
-                dbg!(sender.sender_count());
-                dbg!(v);
-                cond
+                v == Some(true) ||
+                    (!manual_complete && v == Some(false) && sender.sender_count() == 1)
             })
             .await
             .expect("internal error: sender not properly managed");
-        dbg!(self.ready.inner.sender.sender_count());
-    }
-}
-
-#[cfg(feature = "ssr")]
-impl From<Sender<Option<bool>>> for ReadyInner {
-    fn from(sender: Sender<Option<bool>>) -> Self {
-        Self {
-            sender,
-            manual_complete: Arc::new(RwLock::new(false)),
-        }
     }
 }
 
 #[cfg(feature = "ssr")]
 impl ReadyInner {
+    pub(crate) fn new(
+        sender: Sender<Option<bool>>,
+        manual_complete: bool,
+    ) -> Self {
+        Self {
+            sender,
+            manual_complete,
+            manual_complete_armed: Arc::new(RwLock::new(false)),
+        }
+    }
+
     pub(crate) fn complete(&self) {
         let _ = self.sender.send(Some(true));
         // TODO if we were to provide a tracing feature...
@@ -428,7 +430,10 @@ impl ReadyInner {
 
     // this creates a new sender
     pub(crate) fn to_ready_sender(&self) -> ReadySender {
-        dbg!("ReadyInner::to_ready_sender()");
+        if self.manual_complete && !*self.manual_complete_armed.read().expect("not poisoned") {
+            let mut armed = self.manual_complete_armed.write().expect("not poisoned");
+            *armed = true;
+        }
         ReadySender {
             inner: self.clone(),
         }
@@ -440,7 +445,7 @@ impl Ready {
     pub(crate) fn new() -> Ready {
         let (sender, _) = channel(Some(false));
         Ready {
-            inner: Arc::new(sender.into()),
+            inner: ReadyInner::new(sender, false).into(),
             _phantom: Phantom,
         }
     }
@@ -460,7 +465,7 @@ impl Ready {
 #[cfg(feature = "ssr")]
 impl Drop for ReadySender {
     fn drop(&mut self) {
-        if !*self.inner.manual_complete.read().expect("not poisoned") {
+        if !*self.inner.manual_complete_armed.read().expect("not poisoned") {
             self.complete();
         }
     }
@@ -484,6 +489,17 @@ mod debug {
                 .field("resolved", &*self.inner.sender.borrow())
                 .field("senders", &self.inner.sender.sender_count())
                 .field("subscribers", &self.inner.sender.receiver_count())
+                .finish()
+        }
+    }
+
+    impl fmt::Debug for CoReady {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("CoReady")
+                .field("resolved", &*self.inner.sender.borrow())
+                .field("senders", &self.inner.sender.sender_count())
+                .field("subscribers", &self.inner.sender.receiver_count())
+                .field("manual_complete", &self.inner.manual_complete)
                 .finish()
         }
     }

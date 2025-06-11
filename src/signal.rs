@@ -76,9 +76,9 @@ where
     T: Clone + Send + Sync + PartialEq + Serialize + DeserializeOwned + 'static,
 {
     #[track_caller]
-    fn new(value: T) -> Self {
+    fn new(value: T, _manual_complete: bool) -> Self {
         #[cfg(feature = "ssr")]
-        let ready = CoReady::new();
+        let ready = CoReady::new_with_options(_manual_complete);
         let (signal_read, signal_write) = ArcRwSignal::new(value.clone()).split();
 
         // FIXME using `try` variants to work around issues with panics caused
@@ -107,7 +107,6 @@ where
                         // subscriber finishes waiting, get a new value without
                         // tracking.
                         // signal_read.get_untracked()
-
                         signal_read.try_get_untracked().unwrap_or(original)
                     }
                 }
@@ -142,7 +141,14 @@ where
     #[track_caller]
     pub fn new(value: T) -> Self {
         Self {
-            inner: SsrSignalResourceInner::new(value).into(),
+            inner: SsrSignalResourceInner::new(value, false).into(),
+        }
+    }
+
+    #[track_caller]
+    pub fn new_must_notify(value: T) -> Self {
+        Self {
+            inner: SsrSignalResourceInner::new(value, true).into(),
         }
     }
 }
@@ -264,17 +270,7 @@ impl<T> SsrSignalResource<T> {
             inner: Arc::new(SsrWriteSignalInner {
                 signal_write: self.inner.signal_write.clone(),
                 #[cfg(feature = "ssr")]
-                ready_sender: self.inner.ready.to_ready_sender(false),
-            })
-        }
-    }
-
-    pub fn write_only_manual(&self) -> SsrWriteSignal<T> {
-        SsrWriteSignal {
-            inner: Arc::new(SsrWriteSignalInner {
-                signal_write: self.inner.signal_write.clone(),
-                #[cfg(feature = "ssr")]
-                ready_sender: self.inner.ready.to_ready_sender(true),
+                ready_sender: self.inner.ready.to_ready_sender(),
             })
         }
     }
