@@ -32,6 +32,7 @@ portlet = []
 ## Provides the ready signal under server-side rendering.
 ssr = [
     "leptos/ssr",
+    "leptos_router/ssr",
     "dep:tokio",
 ]
 

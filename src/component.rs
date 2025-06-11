@@ -1,5 +1,5 @@
 //! Provides the [`SyncSsr`] and [`SyncSsrSignal`] components.
-use leptos::{children::Children, component, prelude::IntoMaybeErased, view, IntoView};
+use leptos::{children::Children, component, view, IntoView};
 
 #[cfg(feature = "ssr")]
 mod ssr {
@@ -129,8 +129,6 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
 ///
 /// The following represents typical usage.
 ///
-/// FIXME actually make it an example that uses SsrSignalResource
-///
 /// ```
 /// use leptos::prelude::*;
 /// use leptos_router::{
@@ -138,24 +136,40 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
 ///     path, MatchNestedRoutes,
 /// };
 /// use leptos_sync_ssr::component::SyncSsrSignal;
+/// use leptos_sync_ssr::signal::SsrSignalResource;
+///
+/// #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+/// enum BreadCrumbs {
+///     Home,
+///     Author(String),
+///     Article(u64),
+/// };
 ///
 /// #[component]
-/// fn MyApp() -> impl IntoView {
+/// pub fn App() -> impl IntoView {
+///     let fallback = || view! { "Page not found." }.into_view();
+///     // This would panic here
+///     // let breadcrumbs = SsrSignalResource::new(BreadCrumbs::Home);
 ///     view! {
 ///         <Router>
-///             <nav>
-///                 <a href="/">"Home"</a>
-///                 <a href="/author/">"Authors"</a>
-///                 <a href="/article/">"Articles"</a>
-///             </nav>
-///             <SyncSsrSignal>
-///                 <Breadcrumbs/>
-///                 <Routes fallback=|| ()>
-///                     <Route path=path!("") view=HomePage/>
-///                     <AuthorRoutes/>
-///                     <ArticleRoutes/>
-///                 </Routes>
-///             </SyncSsrSignal>
+///             <SyncSsrSignal>{
+///                 // Provide the SsrSignalResource here
+///                 let breadcrumbs = SsrSignalResource::new(BreadCrumbs::Home);
+///                 provide_context(breadcrumbs);
+///
+///                 view! {
+///                     <header>
+///                         <Breadcrumbs/>
+///                     </header>
+///                     <article>
+///                         <Routes fallback=|| ()>
+///                             <Route path=path!("") view=HomePage/>
+///                             <AuthorRoutes/>
+///                             <ArticleRoutes/>
+///                         </Routes>
+///                     </article>
+///                 }
+///             }</SyncSsrSignal>
 ///         </Router>
 ///     }
 /// }
@@ -185,20 +199,27 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
 /// #     }
 /// #     .into_inner()
 /// # }
+/// #
+/// # #[cfg(feature = "ssr")]
+/// # tokio_test::block_on(async {
+/// #     use leptos_router::location::RequestUrl;
+/// #     let _ = any_spawner::Executor::init_tokio();
+/// #     let owner = Owner::new();
+/// #     owner.set();
+/// #     provide_context(RequestUrl::new(""));
+/// #     let _ = view! { <App/> }.to_html();
+/// # });
 /// ```
+
 #[component]
 pub fn SyncSsrSignal(children: Children) -> impl IntoView {
-    // leptos::logging::log!("entering SyncSsrSignal");
     #[cfg(feature = "ssr")]
     let coord = CoReadyCoordinator::new();
 
     #[cfg(feature = "ssr")]
     let exit = {
         let coord = coord.clone();
-        move || {
-            coord.notify();
-            // leptos::logging::log!("exiting SyncSsrSignal");
-        }
+        move || coord.notify()
     };
 
     #[cfg(feature = "ssr")]

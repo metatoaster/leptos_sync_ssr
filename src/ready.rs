@@ -52,11 +52,13 @@ pub struct CoReadyCoordinator {
 /// Under SSR, this contains a `Sender` that may be cloned, and that all
 /// of them will be able to broadcast a message to all actively waiting
 /// [`CoReadySubscription`] that this state has spawned to inform the
-/// futures that the view tree enclosed by `SyncSsrSignal` is now ready
-/// and thus the wait is over.
+/// futures that the view tree enclosed by [`SyncSsrSignal`](
+/// crate::component::SyncSsrSignal) is now ready and thus the wait is
+/// over.
 ///
 /// Under CSR, this is essentially a unit newtype; all resulting methods
-/// and associated functions would in essence be no-ops.
+/// and associated functions would in essence be no-ops, and any
+/// constructors simply return a unit newtype.
 #[derive(Clone)]
 pub struct CoReady {
     #[cfg(feature = "ssr")]
@@ -183,7 +185,6 @@ impl CoReadyCoordinator {
     /// If there are no outstanding `ReadySender`s then they should stop
     /// waiting, otherwise they should continue to wait.
     pub(crate) fn notify(&self) {
-        leptos::logging::log!("[!] CoReadyCoordinator::notify");
         for ready in self.inner.lock()
             .expect("mutex not panicked")
             .iter()
@@ -195,14 +196,15 @@ impl CoReadyCoordinator {
     }
 }
 
-#[cfg(not(feature = "ssr"))]
-impl CoReadyCoordinator {
-    pub(crate) fn new() -> Self {
-        Self {
-            _phantom: Phantom,
-        }
-    }
-}
+// should this be exposed
+// #[cfg(not(feature = "ssr"))]
+// impl CoReadyCoordinator {
+//     pub(crate) fn new() -> Self {
+//         Self {
+//             _phantom: Phantom,
+//         }
+//     }
+// }
 
 #[cfg(feature = "ssr")]
 impl CoReady {
@@ -210,6 +212,10 @@ impl CoReady {
     /// [`CoReadyCoordinator`] provided as a context in the reactive
     /// graph.  This context is provided by nesting inside the
     /// `<SyncSsrSignal/>` component.
+    ///
+    /// This standard version is configured such that senders this
+    /// produced will auto-complete when dropped, such that every
+    /// [`CoReadySubscription`] that are waiting will be released.
     ///
     /// ## Panics
     /// Panics if the context of `CoReadyCoordinator` is not found in
@@ -219,11 +225,45 @@ impl CoReady {
         Self::new_with_options(false)
     }
 
+    /// Create and register a new instance of `CoReady` with the
+    /// [`CoReadyCoordinator`] provided as a context in the reactive
+    /// graph.  This context is provided by nesting inside the
+    /// `<SyncSsrSignal/>` component.
+    ///
+    /// This constructor produces a `CoReady` that must be manually
+    /// completed when a `ReadySender` is acquired from it.  Once
+    /// acquired, every [`CoReadySubscription`] that are waiting before
+    /// being notified (and released from waiting) by the underlying
+    /// `CoReadyCoordinator` will continue to wait, and thus a
+    /// `ReadySender::complete` must be invoked to release the wait
+    /// lock, as simply dropping the `ReadySender` will no longer
+    /// notify complete.
+    ///
+    /// ## Panics
+    /// Panics if the context of `CoReadyCoordinator` is not found in
+    /// the current reactive owner or its ancestors.
     #[track_caller]
     pub fn new_manually_completed() -> Self {
         Self::new_with_options(true)
     }
 
+    /// Create and register a new instance of `CoReady` with the
+    /// [`CoReadyCoordinator`] provided as a context in the reactive
+    /// graph.  This context is provided by nesting inside the
+    /// `<SyncSsrSignal/>` component.
+    ///
+    /// If `manual_complete` is `true`, the resulting `CoReady` will be
+    /// configured such that when a `ReadySender` is acquired from it,
+    /// every [`CoReadySubscription`] that are waiting before being
+    /// notified (and released from waiting) by the underlying
+    /// `CoReadyCoordinator` will continue to wait, and thus a
+    /// `ReadySender::complete` must be invoked to release the wait
+    /// lock, as simply dropping the `ReadySender` will no longer notify
+    /// complete.
+    ///
+    /// ## Panics
+    /// Panics if the context of `CoReadyCoordinator` is not found in
+    /// the current reactive owner or its ancestors.
     #[track_caller]
     pub fn new_with_options(manual_complete: bool) -> Self {
         let location = std::panic::Location::caller();
@@ -292,7 +332,7 @@ impl ReadySubscription {
 
 #[cfg(feature = "ssr")]
 impl ReadySubscription {
-    /// Asynchronously wait for the ready signal.
+    /// Asynchronously wait for the ready signal under SSR.
     ///
     /// This may contain a receiver that will wait for the signal from
     /// the associated `Ready` which this subscription belongs to.  If
@@ -301,6 +341,8 @@ impl ReadySubscription {
     /// up), or that a ready signal was already broadcasted, this
     /// will return immediately, otherwise it will wait for the ready
     /// message to arrive until execution will be allowed to continue.
+    ///
+    /// Under CSR this is essentially a no-op.
     pub async fn wait(mut self) {
         if let Some(inner) = self.inner.take() {
             inner.wait_inner().await
@@ -308,17 +350,27 @@ impl ReadySubscription {
     }
 }
 
+#[cfg(not(feature = "ssr"))]
+impl CoReadySubscription {
+    pub async fn wait(self) {}
+}
+
 #[cfg(feature = "ssr")]
 impl CoReadySubscription {
-    /// Asynchronously wait for the ready signal.
+    /// Asynchronously wait for the ready signal under SSR.
     ///
     /// This contains a receiver that will wait for the signal from
     /// the associated `CoReady` or its associated `ReadySender` bound
     /// to this subscription.
     ///
     /// This will wait until the value `Some(true)` is received, much
-    /// like `ReadySubscription`, but it will also finish waiting on a
-    /// `Some(false)` value if there are no outstanding `ReadySender`.
+    /// like [`ReadySubscription`], but it will also finish waiting on a
+    /// `Some(false)` value if there are no outstanding `ReadySender`
+    /// and the underlying `CoReady` is not configured and armed for
+    /// manual complete.  Refer to [`CoReady::new_manually_completed`]
+    /// for additional details.
+    ///
+    /// Under CSR this is essentially a no-op.
     pub async fn wait(self) {
         self.inner.wait_inner().await
     }
@@ -327,19 +379,11 @@ impl CoReadySubscription {
 #[cfg(feature = "ssr")]
 impl ReadySubscriptionInner {
     pub(crate) async fn wait_inner(mut self) {
-        dbg!(self.ready.inner.sender.sender_count());
-        let sender = &self.ready.inner.sender;
         self
             .receiver
-            .wait_for(|v| {
-                let cond = *v == Some(true);
-                dbg!(sender.sender_count());
-                dbg!(cond);
-                cond
-            })
+            .wait_for(|v| *v == Some(true))
             .await
             .expect("internal error: sender not properly managed");
-        dbg!(self.ready.inner.sender.sender_count());
         // XXX a 0 duration sleep seems to be required to mitigate
         // an issue where Suspend doesn't wake up after the resource
         // runs this async method, and this path does not have an
@@ -381,6 +425,7 @@ impl ReadySubscriptionInner {
         //
         // - https://github.com/leptos-rs/leptos/issues/3699
         // - https://github.com/leptos-rs/leptos/issues/3729
+        // - https://github.com/leptos-rs/leptos/pull/4065
         tokio::time::sleep(std::time::Duration::from_millis(0)).await;
     }
 }

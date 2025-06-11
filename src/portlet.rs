@@ -20,19 +20,29 @@
 
 use std::{future::Future, sync::Arc};
 
-use leptos::prelude::*;
-use leptos::server_fn::error::FromServerFnError;
+use leptos::{
+    reactive::traits::Set,
+    prelude::{AnyView, IntoAny, IntoRender, Render, RenderHtml, Suspend, provide_context, expect_context},
+    suspense::{Suspense, Transition},
+    server::ArcResource,
+    IntoView, view,
+};
 
-use crate::signal::{SsrSignalResource, SsrWriteSignal};
+use crate::signal::SsrSignalResource;
 
 /// A generic portlet context.
 ///
 /// Internally this contains an [`SsrSignalResource<Option<T>>`].  While no
 /// direct access to that underlying is provided, its write signal may be
-/// accessed through [`PortletCtx::expect_write`], subjected to the usual
-/// guidelines around the use of `SsrSignalResource`.  The only way this may be
+/// indirectly used through [`PortletCtx::update_with`], where the guidelines
+/// around the use of `SsrSignalResource` are completely followed to ensure
+/// the expected usage and end-user experience.  The only way this may be
 /// constructed is through the [`PortletCtx::provide`] method to encourage
-/// consistent usage pattern.
+/// a consistent usage pattern.
+///
+/// Code examples below are modified code snippets from the [`nav_portlet`](
+/// https://github.com/metatoaster/leptos_sync_ssr/tree/main/example/nav_portlet)
+/// example.
 #[derive(Clone, Debug)]
 pub struct PortletCtx<T> {
     inner: SsrSignalResource<Option<T>>,
@@ -49,16 +59,19 @@ where
         + IntoRender
         + 'static,
     <T as leptos::prelude::IntoRender>::Output: RenderHtml + Send + 'static,
-    // ArcResource<Result<Option<T>, E>>: IntoFuture<Output = Result<Option<T>, E>>,
-    // <ArcResource<Result<Option<T>, E>> as IntoFuture>::IntoFuture: Send,
     Suspend<Option<AnyView>>: RenderHtml + Render,
 {
-    /// Clears the value for the portlet.
+    /// Clears the portlet.
     ///
-    /// Upon invocation of this method, the rendering of the portlet
-    /// will be `None` through the associated function [`render`](
-    /// PortletCtx::render), which functions to render nothing, hence
-    /// implements the optionally rendered part.
+    /// Upon invocation of this method, a `None` will be written to the
+    /// underlying write signal, which should trigger the re-rendering
+    /// through the associated function [`render`](PortletCtx::render).
+    /// Given the `None` value, this typically results in nothing being
+    /// rendered, achieving the goal of clearing the portlet.
+    ///
+    /// Note that this is typically expected to be used in conjunction
+    /// with [`on_cleanup`](leptos::reactive::owner::on_cleanup) under
+    /// CSR.  Usage under SSR may lead to unexpected behavior.
     pub fn clear(&self) {
         self.inner.inner_write_only().set(None);
     }
@@ -69,6 +82,83 @@ where
     /// via signal is to have the ability for these contexts to be
     /// provided as singletons, as portlets are typically unique for
     /// ease of management.
+    ///
+    /// Typical usage may look something like this:
+    ///
+    /// ```
+    /// use leptos::prelude::*;
+    /// use leptos_router::{
+    ///     components::{Route, Router, Routes},
+    ///     path,
+    /// };
+    /// use leptos_sync_ssr::{component::SyncSsrSignal, portlet::PortletCtx};
+    ///
+    /// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+    /// # struct Nav;
+    /// #
+    /// # impl IntoRender for Nav {
+    /// #     type Output = AnyView;
+    /// #
+    /// #     fn into_render(self) -> Self::Output {
+    /// #         ().into_any()
+    /// #     }
+    /// # }
+    /// #
+    /// #[component]
+    /// pub fn App() -> impl IntoView {
+    ///     let fallback = || view! { "Page not found." }.into_view();
+    ///     // This would panic here
+    ///     // <PortletCtx<Nav>>::provide();
+    ///     view! {
+    ///         <Router>
+    ///             <SyncSsrSignal>{
+    ///                 // This is fine as this is inside `<SyncSsrSignal/>`.
+    ///                 <PortletCtx<Nav>>::provide();
+    ///                 // Other provides and code may go here.
+    ///                 view! {
+    ///                     <header>
+    ///                         // The portlet component, refer to documentation on
+    ///                         // `.render()` for how this component may be defined.
+    ///                         <NavPortlet/>
+    ///                     </header>
+    ///                     <article>
+    ///                         <Routes fallback>
+    ///                             <Route path=path!("") view=HomePage/>
+    ///                             <Route path=path!("authors") view=AuthorListing/>
+    ///                             // plus other routes
+    ///                         </Routes>
+    ///                     </article>
+    ///                 }
+    ///             }</SyncSsrSignal>
+    ///         </Router>
+    ///     }
+    /// }
+    /// #
+    /// # #[component]
+    /// # pub fn AuthorListing() -> impl IntoView {
+    /// #     ()
+    /// # }
+    /// #
+    /// # #[component]
+    /// # pub fn HomePage() -> impl IntoView {
+    /// #     ()
+    /// # }
+    /// #
+    /// # #[component]
+    /// # pub fn NavPortlet() -> impl IntoView {
+    /// #     ()
+    /// # }
+    /// #
+    /// # #[cfg(feature = "ssr")]
+    /// # tokio_test::block_on(async {
+    /// #     use leptos_router::location::RequestUrl;
+    /// #     let _ = any_spawner::Executor::init_tokio();
+    /// #     let owner = Owner::new();
+    /// #     owner.set();
+    /// #     provide_context(RequestUrl::new(""));
+    /// #     let _ = view! { <App/> }.to_html();
+    /// # });
+    /// ```
     ///
     /// ## Panics
     /// Given the use of `SsrSignalResource`, this panics if the context
@@ -83,24 +173,91 @@ where
         });
     }
 
+    /// Alias for [`expect_context::<PortletCtx<T>>()`](expect_context).
+    ///
+    /// ## Panics
+    /// Panics if `PortletCtx<T>` is not found in the current reactive
+    /// owner or its ancestors.
+    pub fn expect() -> PortletCtx<T> {
+        expect_context::<PortletCtx<T>>()
+    }
+
     /// Update the portlet with the provided data fetcher.
     ///
     /// Similar to the fetcher for typical `Resource`s, this use it to
     /// generates a new `Future` to get the latest data.  When created
     /// within a reactive context, any invocation of [`.track()`](
-    /// leptos::reactive::traits::Track::track) on /any reactive data
+    /// leptos::reactive::traits::Track::track) on any reactive data
     /// will result in the expected reactivity.
     ///
     /// Internally, the full functionality of [`SsrSignalResource`] is
     /// only used under SSR, as the usage of the underlying locks must
     /// be used with `ArcResource`, but given the idea is that this
     /// wraps a signal, under CSR (well, after await on the applicable
-    /// resources) the signals are written to directly.
+    /// resource) the `ArcWriteSignal` is then written to directly.
     ///
     /// This implementation is even more complex than just using the
     /// `SsrSignalResource` directly, however, the end result is that
     /// under CSR only the standard `ArcRwSignal` is what's effectively
     /// used.
+    ///
+    /// Typical usage may look like this.
+    ///
+    /// ```
+    /// # use leptos::{
+    /// #     prelude::{AnyView, IntoAny, IntoRender, ServerFnError, expect_context},
+    /// #     server::ArcResource,
+    /// #     component, view, IntoView,
+    /// # };
+    /// # use leptos_sync_ssr::portlet::PortletCtx;
+    /// #
+    /// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+    /// # struct Author;
+    /// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+    /// # struct Nav;
+    /// #
+    /// # impl IntoRender for Nav {
+    /// #     type Output = AnyView;
+    /// #
+    /// #     fn into_render(self) -> Self::Output {
+    /// #         ().into_any()
+    /// #     }
+    /// # }
+    /// #
+    /// #[component]
+    /// pub fn AuthorListing() -> impl IntoView {
+    ///     let authors = expect_context::<ArcResource<Result<Vec<(String, Author)>, ServerFnError>>>();
+    ///     let nav_ctx = expect_context::<PortletCtx<Nav>>();
+    ///
+    ///     #[cfg(not(feature="ssr"))]
+    ///     on_cleanup({
+    ///         let nav_ctx = nav_ctx.clone();
+    ///         move || nav_ctx.clear()
+    ///     });
+    ///
+    ///     view! {
+    ///         // This ensures `PortletCtx<Nav>` is updated with data provided by
+    ///         // `authors`.
+    ///         {nav_ctx.update_with(move || {
+    ///             let authors = authors.clone();
+    ///             // Optionally ensure updates to the authors resource are tracked;
+    ///             // this particular usage is a current workaround.
+    ///             // See: https://github.com/leptos-rs/leptos/pull/4061
+    ///             // #[cfg(not(feature = "ssr"))]
+    ///             // authors.track();
+    ///             async move {
+    ///                 authors.await
+    ///                     // TODO conversion of list of authors to `Nav` type
+    ///                     .map(|authors| todo!())
+    ///                     .ok()
+    ///             }
+    ///         })}
+    ///         <div>
+    ///             // Other components/elements.
+    ///         </div>
+    ///     }
+    /// }
+    /// ```
     pub fn update_with<Fut>(&self, fetcher: impl Fn() -> Fut + Send + Sync + 'static) -> impl IntoView
     where
         Fut: Future<Output = Option<T>> + Send + 'static,
@@ -119,6 +276,7 @@ where
         // being written to for the second time under SSR, and for the first
         // (and only) time under hydrate/CSR which would set the underlying
         // signal with the real expected value without the other end waiting.
+        #[allow(unused_variables)]
         let res = ArcResource::new(
             || (),
             {
@@ -180,17 +338,17 @@ where
     /// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
     /// # struct Nav;
     /// #
-    /// # impl IntoRender for Nav {
-    /// #     type Output = AnyView;
-    /// #
-    /// #     fn into_render(self) -> Self::Output {
-    /// #         view! {
-    /// #             todo!()
-    /// #         }
-    /// #         .into_any()
-    /// #     }
-    /// # }
-    /// #
+    /// impl IntoRender for Nav {
+    ///     type Output = AnyView;
+    ///
+    ///     fn into_render(self) -> Self::Output {
+    ///         view! {
+    ///             todo!()
+    ///         }
+    ///         .into_any()
+    ///     }
+    /// }
+    ///
     /// #[component]
     /// pub fn NavPortlet() -> impl IntoView {
     ///     <PortletCtx<Nav>>::render()
@@ -198,7 +356,8 @@ where
     /// ```
     ///
     /// ## Panics
-    /// Panics if the underlying `PortletCtx<T>` is not found.
+    /// Panics if `PortletCtx<T>` is not found in the current reactive
+    /// owner or its ancestors.
     pub fn render() -> impl IntoView {
         let ctx = expect_context::<PortletCtx<T>>();
         // The resource must be used and not the underlying `ArcReadSignal`,
