@@ -78,12 +78,17 @@ where
     fn new(value: T) -> Self {
         #[cfg(feature = "ssr")]
         let ready = CoReady::new();
-        let (signal_read, signal_write) = ArcRwSignal::new(value).split();
+        let (signal_read, signal_write) = ArcRwSignal::new(value.clone()).split();
 
+        // FIXME using `try` variants to work around issues with panics caused
+        // by access of reactive value that were disposed (despite being Arc
+        // variants), see:
+        // - https://github.com/leptos-rs/leptos/issues/3729
         let resource = ArcResource::new(
             {
                 let signal_read = signal_read.clone();
-                move || signal_read.get()
+                // move || signal_read.get()
+                move || signal_read.try_get().unwrap_or(value.clone())
             },
             {
                 #[cfg(feature = "ssr")]
@@ -97,9 +102,10 @@ where
                         subscriber.wait().await;
                         // given that the signal may provide a different value
                         // to what was originally passed by the time the
-                        // subscriber finishes waiting, try to get a new value.
-                        // using `try_get_untracked` to work around potential
-                        // disposal issues.
+                        // subscriber finishes waiting, get a new value without
+                        // tracking.
+                        // signal_read.get_untracked()
+
                         signal_read.try_get_untracked().unwrap_or(original)
                     }
                 }
@@ -255,7 +261,17 @@ impl<T> SsrSignalResource<T> {
             inner: Arc::new(SsrWriteSignalInner {
                 write_signal: self.inner.signal_write.clone(),
                 #[cfg(feature = "ssr")]
-                ready_sender: self.inner.ready.to_ready_sender(),
+                ready_sender: self.inner.ready.to_ready_sender(false),
+            })
+        }
+    }
+
+    pub fn write_only_manual(&self) -> SsrWriteSignal<T> {
+        SsrWriteSignal {
+            inner: Arc::new(SsrWriteSignalInner {
+                write_signal: self.inner.signal_write.clone(),
+                #[cfg(feature = "ssr")]
+                ready_sender: self.inner.ready.to_ready_sender(true),
             })
         }
     }

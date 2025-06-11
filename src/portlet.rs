@@ -104,7 +104,7 @@ where
             {
                 let ctx = ctx.clone();
                 move |_| {
-                    let ws = ctx.inner.write_only();
+                    let ws = ctx.inner.write_only_manual();
                     let fut = fetcher();
                     async move {
                         ws.set(fut.await);

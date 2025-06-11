@@ -1,7 +1,7 @@
 #[cfg(feature = "ssr")]
 mod ssr {
     pub use leptos::context::use_context;
-    pub use std::sync::{Arc, Mutex};
+    pub use std::sync::{Arc, Mutex, RwLock};
     pub use tokio::sync::watch::{channel, Receiver, Sender};
 }
 
@@ -68,6 +68,7 @@ pub struct CoReady {
 #[derive(Clone)]
 pub(crate) struct ReadyInner {
     sender: Sender<Option<bool>>,
+    manual_complete: Arc<RwLock<bool>>,
     // TODO determine if/how to leverage duplicated sender for wait condition
     // this is applicable for setup at components so that it takes more than
     // one sender before the subscriber will actually wait in the case for
@@ -223,7 +224,7 @@ impl CoReady {
         });
         let (sender, _) = channel(None);
         let result = Self {
-            inner: ReadyInner { sender }.into(),
+            inner: Arc::new(sender.into()),
             _phantom: Phantom,
         };
         coordinator.register(result.clone());
@@ -245,7 +246,9 @@ impl CoReady {
         }
     }
 
-    pub(crate) fn to_ready_sender(&self) -> ReadySender {
+    pub(crate) fn to_ready_sender(&self, manual_complete: bool) -> ReadySender {
+        let mut mc = self.inner.manual_complete.write().expect("not poisoned");
+        *mc = manual_complete;
         self.inner.to_ready_sender()
     }
 }
@@ -380,17 +383,31 @@ impl CoReadySubscriptionInner {
     pub(crate) async fn wait_inner(mut self) {
         dbg!(self.ready.inner.sender.sender_count());
         let sender = &self.ready.inner.sender;
+        let co_ready = self.ready.inner.clone();
         self
             .receiver
             .wait_for(|v| {
-                let cond = *v == Some(true) || (*v == Some(false) && sender.sender_count() == 1);
+                let manual_complete = *co_ready.manual_complete.read().expect("not poisoned");
+                let v = *v;
+                let cond = v == Some(true) ||
+                    (!manual_complete && v == Some(false) && sender.sender_count() == 1);
                 dbg!(sender.sender_count());
-                dbg!(*v);
+                dbg!(v);
                 cond
             })
             .await
             .expect("internal error: sender not properly managed");
         dbg!(self.ready.inner.sender.sender_count());
+    }
+}
+
+#[cfg(feature = "ssr")]
+impl From<Sender<Option<bool>>> for ReadyInner {
+    fn from(sender: Sender<Option<bool>>) -> Self {
+        Self {
+            sender,
+            manual_complete: Arc::new(RwLock::new(false)),
+        }
     }
 }
 
@@ -413,7 +430,7 @@ impl ReadyInner {
     pub(crate) fn to_ready_sender(&self) -> ReadySender {
         dbg!("ReadyInner::to_ready_sender()");
         ReadySender {
-            inner: self.clone()
+            inner: self.clone(),
         }
     }
 }
@@ -423,7 +440,7 @@ impl Ready {
     pub(crate) fn new() -> Ready {
         let (sender, _) = channel(Some(false));
         Ready {
-            inner: ReadyInner { sender }.into(),
+            inner: Arc::new(sender.into()),
             _phantom: Phantom,
         }
     }
@@ -443,7 +460,9 @@ impl Ready {
 #[cfg(feature = "ssr")]
 impl Drop for ReadySender {
     fn drop(&mut self) {
-        self.complete();
+        if !*self.inner.manual_complete.read().expect("not poisoned") {
+            self.complete();
+        }
     }
 }
 
