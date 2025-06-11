@@ -1,0 +1,70 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: sans-serif;
+}
+
+header > nav {
+    padding: 0.5em;
+    background: #eee;
+}
+
+header > nav > a {
+    padding: 0.5em 1em;
+}
+
+header > nav > a:hover {
+    background: #ddd;
+}
+
+header > nav > a[aria-current] {
+    background: #ccc;
+}
+
+main {
+    display: flex;
+}
+
+main > article {
+    flex: 1;
+}
+
+main > aside {
+    flex: 0;
+    max-width: 20em;
+    padding: 1em;
+}
+
+main > aside > section {
+    width: 20em;
+}
+
+main > aside > section > heading {
+    font-weight: bold;
+}
+
+main > aside > section > nav > a {
+    padding: 0.1em 0;
+    display: block;
+}
+
+main > aside > section > nav > a:hover {
+    background: #f7f7f7;
+}
+
+main > aside > section > nav > a[aria-current] {
+    background: #eee;
+}
+
+div#notice {
+    display: none;
+}
+
+div#notice.panicked {
+    position: sticky;
+    top: 0;
+    margin: 0;
+    padding: 0.5em;
+    border-bottom: 2px solid #f00;
+    display: block;
+}
