@@ -103,16 +103,13 @@ The usage of `<SyncSsr>` component is not just limited to the top level
 `App`, as it uses the `<Provider>` component underneath to scope
 `Ready` to where it's required. Refer to the [`simple`](example/simple/)
 example this scoped example, and for a more practical and complete
-example, refer to the [`nav_portlet`](example/nav_portlet/) example.
+example, refer to the [`nav_portlet`](example/nav_portlet/) example,
+which uses a different but similar `<SyncSsrSignal/>` component for a
+different kind of synchronization in conjunction with `PortletCtx<T>`.
 
 ## Supported Leptos version
 
-In order for the typical patterns as described to function, this package
-requires bug fixes to Leptos that will land in `0.8.0-beta`, hence that
-would be the minimum Leptos version.  While the core functionality
-provided by this package can work under `0.7`, just that no releases
-will be made to depend on that as it will lack bug fixes, hences bugs
-that will prevent the examples provided with this package from working.
+This package requires Leptos version `0.8.0` or later.
 
 ## Usage
 
@@ -122,7 +119,7 @@ feature as per convention:
 ```toml
 [dependencies]
 leptos_sync_ssr = "0.1.0-beta"
-leptos = "0.8.0-beta"
+leptos = "0.8.0"
 
 [features]
 hydrate = [
@@ -153,18 +150,26 @@ https://github.com/demiurg-dev/leptos_async_signal/pull/15) be merged.
 However, there are other rules that must be followed to avoid deadlocks,
 so extra care must be taken to use its `async_signal` correctly.
 
-On the other hand, `leptos_sync_ssr` does not have such limitations -
-the waiting can happen inside a `Suspend`, just that it may be better to
-have the wait done in `Resource` simply due to how Leptos SSR will
-always poll `Resource` unlike `Suspend`.  Waiting inside the `Suspend`
-will have somewhat more variations and thus having somewhat lower
-reliability of this working correctly under a work-stealing task
-scheduler.
+On the other hand, the raw signals to control waiting provided by
+`leptos_sync_ssr` does not have such limitations - the waiting can
+happen inside a `Suspend`, just that it may be better to have the wait
+done in `Resource` simply due to how Leptos SSR will always poll
+`Resource` unlike `Suspend`.  Waiting inside the `Suspend` will have
+somewhat more variations and thus having somewhat lower reliability of
+this working correctly under a work-stealing task scheduler.
+
+Hence this package also provide a similar approach taken by
+`leptos_async_signal`, but with significant improvements, such that it
+is possible to provide the default value without being locked out if the
+active view tree does not need to write to it, and that the full suite
+of update traits may be used, rather than just `Set`, plus the option to
+automatically stop waiting when the writer is dropped may be used.
 
 That being said, the approach taken by `leptos_async_signal` is much
-more granular and has the bonus of being fully unaffected by the
-interactions between work-stealing scheduler and how Leptos handles the
-`Suspend` and resource futures.  Tested using `0.8.0-beta` and with 200k
+more rigid given its direct implementation of `Set`, which has the bonus
+of being fully unaffected by the interactions between work-stealing
+scheduler and how Leptos handles the `Suspend` and resource futures,
+when used correctly. This was tested using `0.8.0-beta` and with 200k
 requests (5 concurrent).  Whereas the solution provided with
 `leptos_sync_ssr` merely extends on the existing features so the issues
 of that interaction will still apply.  In 100k requests, up to 10
@@ -174,6 +179,15 @@ in Leptos itself when running inside a work-stealing task scheduler. A
 discussion of the underlying topic at [`leptos/leptos-rs#3729`](
 https://github.com/leptos-rs/leptos/issues/3729) currently documents my
 findings with the particular pattern I've used.
+
+Using `SsrSignalResource`, which is developed with inspirations from
+`leptos_async_signal`, approaches the expected level of correctness.
+Benchmarks test results will be provided later, as the correctness
+under a work-stealing task scheduler are further affected by
+[`leptos/leptos-rs#4060`](https://github.com/leptos-rs/leptos/issues/4060),
+and that
+[`leptos/leptos-rs#4065`](https://github.com/leptos-rs/leptos/issues/4065),
+may also affect this.
 
 ## License
 
