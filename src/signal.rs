@@ -9,7 +9,7 @@ use leptos::{
     reactive::{
         traits::{DefinedAt, Get, GetUntracked, IsDisposed, Notify, UntrackableGuard, Write},
         signal::{
-	     ArcRwSignal, ArcWriteSignal,
+            ArcReadSignal, ArcRwSignal, ArcWriteSignal,
             guards::{WriteGuard, UntrackedWriteGuard},
         },
     },
@@ -48,6 +48,7 @@ struct SsrSignalResourceInner<T> {
     #[cfg(feature = "ssr")]
     ready: CoReady,
     resource: ArcResource<T>,
+    signal_read: ArcReadSignal<T>,
     signal_write: ArcWriteSignal<T>,
 }
 
@@ -67,7 +68,7 @@ struct SsrWriteSignalNotifier<T> {
 struct SsrWriteSignalInner<T> {
     #[cfg(feature = "ssr")]
     ready_sender: ReadySender,
-    write_signal: ArcWriteSignal<T>,
+    signal_write: ArcWriteSignal<T>,
 }
 
 impl<T> SsrSignalResourceInner<T>
@@ -93,6 +94,7 @@ where
             {
                 #[cfg(feature = "ssr")]
                 let ready = ready.clone();
+                let signal_read = signal_read.clone();
                 move |original| {
                     #[cfg(feature = "ssr")]
                     let subscriber = ready.subscribe();
@@ -115,6 +117,7 @@ where
         Self {
             #[cfg(feature = "ssr")]
             ready: ready,
+            signal_read,
             signal_write,
             resource,
         }
@@ -259,7 +262,7 @@ impl<T> SsrSignalResource<T> {
     pub fn write_only(&self) -> SsrWriteSignal<T> {
         SsrWriteSignal {
             inner: Arc::new(SsrWriteSignalInner {
-                write_signal: self.inner.signal_write.clone(),
+                signal_write: self.inner.signal_write.clone(),
                 #[cfg(feature = "ssr")]
                 ready_sender: self.inner.ready.to_ready_sender(false),
             })
@@ -269,14 +272,18 @@ impl<T> SsrSignalResource<T> {
     pub fn write_only_manual(&self) -> SsrWriteSignal<T> {
         SsrWriteSignal {
             inner: Arc::new(SsrWriteSignalInner {
-                write_signal: self.inner.signal_write.clone(),
+                signal_write: self.inner.signal_write.clone(),
                 #[cfg(feature = "ssr")]
                 ready_sender: self.inner.ready.to_ready_sender(true),
             })
         }
     }
 
-    pub fn write_only_untracked(&self) -> ArcWriteSignal<T> {
+    pub fn inner_read_only(&self) -> ArcReadSignal<T> {
+        self.inner.signal_read.clone()
+    }
+
+    pub fn inner_write_only(&self) -> ArcWriteSignal<T> {
         self.inner.signal_write.clone()
     }
 }
@@ -301,14 +308,14 @@ impl<T: 'static> Write for SsrWriteSignal<T> {
             inner: self.inner.clone(),
         };
         self.inner
-            .write_signal
+            .signal_write
             .try_write_untracked()
             .map(|guard| WriteGuard::new(notifier, guard))
     }
 
     #[allow(refining_impl_trait)]
     fn try_write_untracked(&self) -> Option<UntrackedWriteGuard<Self::Value>> {
-        self.inner.write_signal.try_write_untracked()
+        self.inner.signal_write.try_write_untracked()
     }
 }
 
@@ -316,7 +323,7 @@ impl<T> DefinedAt for SsrWriteSignal<T> {
     fn defined_at(&self) -> Option<&'static Location<'static>> {
         // TODO just simply leverage the underlying implementation;
         // TODO figure out if we want to actually implement this
-        self.inner.write_signal.defined_at()
+        self.inner.signal_write.defined_at()
     }
 }
 
@@ -329,7 +336,7 @@ impl<T> IsDisposed for SsrWriteSignal<T> {
 
 impl<T> Notify for SsrWriteSignal<T> {
     fn notify(&self) {
-        self.inner.write_signal.notify();
+        self.inner.signal_write.notify();
         // assume when this is marked dirty, a change has happened and so it
         // is now safe for the reader to continue execution
         #[cfg(feature = "ssr")]
@@ -339,8 +346,7 @@ impl<T> Notify for SsrWriteSignal<T> {
 
 impl<T> Notify for SsrWriteSignalNotifier<T> {
     fn notify(&self) {
-        leptos::logging::log!("[!] SsrWriteSignalNotifier::notify");
-        self.inner.write_signal.notify();
+        self.inner.signal_write.notify();
         // assume when this is marked dirty, a change has happened and so it
         // is now safe for the reader to continue execution
         #[cfg(feature = "ssr")]

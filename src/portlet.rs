@@ -60,7 +60,7 @@ where
     /// PortletCtx::render), which functions to render nothing, hence
     /// implements the optionally rendered part.
     pub fn clear(&self) {
-        self.inner.write_only_untracked().set(None);
+        self.inner.inner_write_only().set(None);
     }
 
     /// Provide this as a context for a Leptos `App`.
@@ -113,13 +113,12 @@ where
         // the following resource will as it directly leads to `.set()` being
         // called to signal the unlock.
         let fetcher = Arc::new(fetcher);
-        // Note this resource only lives on the server - the fetcher is invoked
+        // Note this resource only used on the server - the fetcher is invoked
         // again directly to write to underlying `ArcWriteSignal` directly, and
         // this second invocation will not be problematic as the same data is
         // being written to for the second time under SSR, and for the first
         // (and only) time under hydrate/CSR which would set the underlying
         // signal with the real expected value without the other end waiting.
-        #[cfg(feature = "ssr")]
         let res = ArcResource::new(
             || (),
             {
@@ -152,7 +151,7 @@ where
                         res.await;
                         // This must be done normally anyway to ensure the
                         // read signal is updated on the other end.
-                        ctx.inner.write_only_untracked().set(fut.await);
+                        ctx.inner.inner_write_only().set(fut.await);
                     })
                 }
             }</Suspense>
@@ -202,17 +201,30 @@ where
     /// Panics if the underlying `PortletCtx<T>` is not found.
     pub fn render() -> impl IntoView {
         let ctx = expect_context::<PortletCtx<T>>();
+        // The resource must be used and not the underlying `ArcReadSignal`,
+        // hydration error results otherwise.
         let resource = ctx.inner.read_only();
         let suspend = move || {
             let resource = resource.clone();
             Suspend::new(async move {
-                let result = resource.await;
-                Some(result?
+                // While it is be possible to use the inner `ArcReadSignal`
+                // under CSR, with hydration this can be problematic given
+                // that the value may be set later in the view tree but with
+                // the hydration done early this causes a mismatch.  This
+                // following match will only await for the resource when
+                // necessary, but given this doubles the use of `None` for
+                // "missing" and "not ready", this isn't probably the best.
+                // Leaving this in place for some future consideration.
+                //
+                // match ctx.inner.inner_read_only().get() {
+                //     Some(v) => Some(v),
+                //     None => ctx.inner.read_only().await,
+                // };
+                Some(resource.await?
                     .into_render()
                     .into_any())
             })
         };
-
         view! { <Transition>{move || suspend() }</Transition> }
     }
 }
