@@ -18,7 +18,7 @@
 //! must be placed in a higher level of the view tree before `PortletCtx` may
 //! be [provided](PortletCtx::provide) as a context.
 
-use std::future::Future;
+use std::{future::Future, sync::Arc};
 
 use leptos::prelude::*;
 use leptos::server_fn::error::FromServerFnError;
@@ -85,24 +85,46 @@ where
 
     /// Update the portlet with the provided data fetcher.
     ///
-    /// Similar to resources, the fetcher generates a new `Future` to
-    /// get the latest data, and when created within a reactive context,
-    /// calling `.track()`[leptos::reactive::traits::Track::track] on
-    /// any reactive data being used will ensure they be tracked for
-    /// updates to ensure reactivity.  The result is that whenever some
-    /// data is returned, that will be used to render the portlet.  As
-    /// this is intended to work with the reactive system, this returns
-    /// a view that should be plugged into the view tree to be returned
-    /// by the component that intends to activate the portlet.
+    /// Similar to the fetcher for typical `Resource`s, this use it to
+    /// generates a new `Future` to get the latest data.  When created
+    /// within a reactive context, any invocation of [`.track()`](
+    /// leptos::reactive::traits::Track::track) on /any reactive data
+    /// will result in the expected reactivity.
+    ///
+    /// Internally, the full functionality of [`SsrSignalResource`] is
+    /// only used under SSR, as the usage of the underlying locks must
+    /// be used with `ArcResource`, but given the idea is that this
+    /// wraps a signal, under CSR (well, after await on the applicable
+    /// resources) the signals are written to directly.
+    ///
+    /// This implementation is even more complex than just using the
+    /// `SsrSignalResource` directly, however, the end result is that
+    /// under CSR only the standard `ArcRwSignal` is what's effectively
+    /// used.
     pub fn update_with<Fut>(&self, fetcher: impl Fn() -> Fut + Send + Sync + 'static) -> impl IntoView
     where
         Fut: Future<Output = Option<T>> + Send + 'static,
     {
         let ctx = self.clone();
+        // This fetcher will need to be called inside a resource first as it
+        // reconfigures the underlying `SsrSignalResource` to manual release
+        // mode upon acquisition of the `SsrWriteSignal` - this ensures the
+        // `ArcResource` on the other end will only unlock when signaled, which
+        // the following resource will as it directly leads to `.set()` being
+        // called to signal the unlock.
+        let fetcher = Arc::new(fetcher);
+        // Note this resource only lives on the server - the fetcher is invoked
+        // again directly to write to underlying `ArcWriteSignal` directly, and
+        // this second invocation will not be problematic as the same data is
+        // being written to for the second time under SSR, and for the first
+        // (and only) time under hydrate/CSR which would set the underlying
+        // signal with the real expected value without the other end waiting.
+        #[cfg(feature = "ssr")]
         let res = ArcResource::new(
             || (),
             {
                 let ctx = ctx.clone();
+                let fetcher = fetcher.clone();
                 move |_| {
                     let ws = ctx.inner.write_only_manual();
                     let fut = fetcher();
@@ -115,28 +137,22 @@ where
         view! {
             <Suspense>{
                 let ctx = ctx.clone();
+                let fetcher = fetcher.clone();
                 move || {
+                    #[cfg(feature = "ssr")]
                     let res = res.clone();
                     let ctx = ctx.clone();
+                    let fut = fetcher();
                     Suspend::new(async move {
+                        // Again, only under SSR we need the unlock signal.
+                        // Under CSR, this signal is absent so use the fetcher
+                        // directly to acquire the future to acquire the value
+                        // to update
+                        #[cfg(feature = "ssr")]
                         res.await;
-                        // This additional round-tripping seems redundant,
-                        // but is absolutely vital to ensure the original
-                        // value in the signal is also reflected under
-                        // hydration - while the resource will reflect the
-                        // later value because it can wait, the original
-                        // signal would have the default value as the
-                        // resources aren't run again during hydration,
-                        // and this descrepancy will not be resolved until
-                        // the signal is finally written to by chance of
-                        // user's interaction, which by that point it may
-                        // already result in difference in observed app
-                        // behavior between SSR+hydrate and CSR.
-                        //
-                        // TODO maybe under CSR, we can skip the resource?
-                        if let Some(value) = ctx.inner.read_only().get_untracked() {
-                            ctx.inner.write_only_untracked().set(value);
-                        }
+                        // This must be done normally anyway to ensure the
+                        // read signal is updated on the other end.
+                        ctx.inner.write_only_untracked().set(fut.await);
                     })
                 }
             }</Suspense>
