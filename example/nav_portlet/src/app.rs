@@ -403,6 +403,7 @@ pub fn AuthorTop() -> impl IntoView {
     view! {
         {nav_ctx.update_with(move || {
             let authors = authors.clone();
+            #[cfg(not(feature = "ssr"))]
             authors.track();
             async move {
                 authors.await
@@ -421,6 +422,7 @@ pub fn AuthorTop() -> impl IntoView {
         })}
         {info_ctx.update_with(move || {
             let author = author.clone();
+            #[cfg(not(feature = "ssr"))]
             author.track();
             async move {
                 author.await
@@ -557,6 +559,7 @@ pub fn ArticleTop() -> impl IntoView {
     view! {
         {nav_ctx.update_with(move || {
             let articles = articles.clone();
+            #[cfg(not(feature = "ssr"))]
             articles.track();
             async move {
                 articles.await
@@ -575,6 +578,7 @@ pub fn ArticleTop() -> impl IntoView {
         })}
         {info_ctx.update_with(move || {
             let article = article.clone();
+            #[cfg(not(feature = "ssr"))]
             article.track();
             async move {
                 article.await
