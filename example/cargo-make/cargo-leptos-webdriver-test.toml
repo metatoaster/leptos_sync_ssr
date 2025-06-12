@@ -4,10 +4,4 @@ extend = [
 ]
 
 [tasks.integration-test]
-dependencies = ["start-webdriver", "cargo-leptos-e2e"]
-
-[tasks.integration-test-actix]
-dependencies = ["start-webdriver", "cargo-leptos-e2e-actix"]
-
-[tasks.integration-test-axum]
-dependencies = ["start-webdriver", "cargo-leptos-e2e-axum"]
+dependencies = ["start-webdriver", "cargo-leptos-build", "cargo-leptos-e2e"]

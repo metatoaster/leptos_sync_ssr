@@ -1,0 +1,65 @@
+name: build
+
+on:
+  push:
+    branches:
+      - "main"
+      - "testing"
+  pull_request:
+    branches:
+      - "main"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install needed system packages with apt-get
+      run: |
+        sudo apt-get update
+        sudo apt-get install chromium-chromedriver
+
+    - name: Add wasm32-unknown-unknown
+      run: rustup target add wasm32-unknown-unknown
+
+    - name: Install binstall
+      uses: cargo-bins/cargo-binstall@main
+
+    - name: Install wasm-bindgen
+      run: cargo binstall wasm-bindgen-cli --no-confirm
+
+    - name: Install cargo-make
+      run: cargo binstall cargo-make --no-confirm
+
+    - name: Install cargo-leptos
+      run: cargo binstall cargo-leptos --no-confirm
+
+    - name: Build leptos_sync_ssr
+      run: cargo build
+
+    - name: Run tests
+      run: cargo test --all-features
+
+    - name: Run end-to-end tests on simple
+      run: |
+        cd example/simple
+        cargo make integration-test
+        cd ../..
+
+    - name: Run end-to-end tests on nav_portlet_alt
+      run: |
+        cd example/nav_portlet_alt
+        cargo make integration-test --bin-features=actix
+        cargo make integration-test --bin-features=axum
+        cd ../..
+
+    - name: Run end-to-end tests on nav_portlet
+      run: |
+        cd example/nav_portlet
+        cargo make integration-test --bin-features=actix
+        cargo make integration-test --bin-features=axum
+        cd ../..
