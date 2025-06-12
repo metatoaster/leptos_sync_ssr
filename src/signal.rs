@@ -61,6 +61,8 @@ struct SsrSignalResourceInner<T> {
 /// to stop waiting when dropped, refer to the documentation for
 /// [`SsrSignalResource`] for details as this type is tightly coupled to
 /// that type.
+// Note that this type is _NOT_ Clone specifically to avoid potential
+// footguns from the notify when dropped behavior.
 pub struct SsrWriteSignal<T> {
     inner: Arc<SsrWriteSignalInner<T>>,
 }
@@ -332,7 +334,7 @@ impl<T> SsrSignalResource<T> {
     /// value.  In the following failing example, the value provided by
     /// `ws.set()` will not be read under SSR by the underlying resource
     /// as the lock was not signaled as required in time.  Essentially,
-    /// no `ReadySender` were avaialble and this allow the wait to
+    /// no `ReadySender` were available and this allow the wait to
     /// resolve when the `CoReadyCoordinator`'s notifies, allowing the
     /// underlying `ArcResource` to return the value before the expected
     /// one was assigned.
