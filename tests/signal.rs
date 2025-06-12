@@ -39,41 +39,38 @@ fn Indicator() -> impl IntoView {
 #[component]
 fn SetterUsed(mode: Option<Mode>) -> impl IntoView {
     let sr = expect_context::<SsrSignalResource<String>>();
-    let res = ArcResource::new(
-        || (),
-        {
-            let sr = sr.clone();
-            move |_| {
-                let ws = sr.write_only();
-                async move {
-                    // a timeout here to emulate server function delay, this
-                    // should be enough to delay resolution of this future
-                    // such that the one on the Indicator be ready and
-                    // render its output should it not have an additional
-                    // wait.
-                    #[cfg(feature = "ssr")]
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let res = ArcResource::new(|| (), {
+        let sr = sr.clone();
+        move |_| {
+            let ws = sr.write_only();
+            async move {
+                // a timeout here to emulate server function delay, this
+                // should be enough to delay resolution of this future
+                // such that the one on the Indicator be ready and
+                // render its output should it not have an additional
+                // wait.
+                #[cfg(feature = "ssr")]
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-                    let value = "Hello world!";
-                    match mode {
-                        None => format!("resource write signal setting no value"),
-                        Some(Mode::Set) => {
-                            ws.set(value.to_string());
-                            format!("resource write signal setting value: {value}")
-                        }
-                        Some(Mode::Update) => {
-                            ws.update(|s| s.push_str(value));
-                            format!("resource write signal pushed value: {value}")
-                        }
-                        Some(Mode::UpdateUntracked) => {
-                            ws.update_untracked(|s| s.push_str(value));
-                            format!("resource write signal pushed value (untracked): {value}")
-                        }
+                let value = "Hello world!";
+                match mode {
+                    None => format!("resource write signal setting no value"),
+                    Some(Mode::Set) => {
+                        ws.set(value.to_string());
+                        format!("resource write signal setting value: {value}")
+                    }
+                    Some(Mode::Update) => {
+                        ws.update(|s| s.push_str(value));
+                        format!("resource write signal pushed value: {value}")
+                    }
+                    Some(Mode::UpdateUntracked) => {
+                        ws.update_untracked(|s| s.push_str(value));
+                        format!("resource write signal pushed value (untracked): {value}")
                     }
                 }
             }
-        },
-    );
+        }
+    });
 
     view! {
         <Suspense>
@@ -166,26 +163,23 @@ fn SetterMisusedWriteOnlyCloned() -> impl IntoView {
 #[component]
 fn SetterMisusedWriteOnlyCreatedLate() -> impl IntoView {
     let sr = expect_context::<SsrSignalResource<String>>();
-    let res = ArcResource::new(
-        || (),
-        {
+    let res = ArcResource::new(|| (), {
+        let sr = sr.clone();
+        move |_| {
             let sr = sr.clone();
-            move |_| {
-                let sr = sr.clone();
-                async move {
-                    #[cfg(feature = "ssr")]
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                    // This is the misuse as the notification wouldn't be triggered
-                    // in time.
-                    let ws = sr.write_only();
+            async move {
+                #[cfg(feature = "ssr")]
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                // This is the misuse as the notification wouldn't be triggered
+                // in time.
+                let ws = sr.write_only();
 
-                    let value = "Hello world!";
-                    ws.set(value.to_string());
-                    format!("resource write signal setting value: {value}")
-                }
+                let value = "Hello world!";
+                ws.set(value.to_string());
+                format!("resource write signal setting value: {value}")
             }
-        },
-    );
+        }
+    });
 
     view! {
         <Suspense>
@@ -465,10 +459,12 @@ async fn misused_write_only_kept_alive_deadlocks() {
 
     // This deadlock happens because the setter was kept alive in the reactive
     // graph without being dropped (or otherwise written to).
-    assert!(timeout(Duration::from_millis(500), app.to_html_stream_in_order().collect::<String>())
-        .await
-        .is_err()
+    assert!(timeout(
+        Duration::from_millis(500),
+        app.to_html_stream_in_order().collect::<String>()
     )
+    .await
+    .is_err())
 }
 
 #[cfg(feature = "ssr")]

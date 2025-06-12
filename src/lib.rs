@@ -160,4 +160,6 @@ pub mod signal;
 #[cfg(test)]
 mod tests;
 
-pub use ready::{CoReady, CoReadyCoordinator, CoReadySubscription, Ready, ReadyHandle, ReadySubscription};
+pub use ready::{
+    CoReady, CoReadyCoordinator, CoReadySubscription, Ready, ReadyHandle, ReadySubscription,
+};

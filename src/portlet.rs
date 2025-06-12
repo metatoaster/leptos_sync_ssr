@@ -21,11 +21,13 @@
 use std::{future::Future, sync::Arc};
 
 use leptos::{
+    prelude::{
+        expect_context, provide_context, AnyView, IntoAny, IntoRender, Render, RenderHtml, Suspend,
+    },
     reactive::traits::Set,
-    prelude::{AnyView, IntoAny, IntoRender, Render, RenderHtml, Suspend, provide_context, expect_context},
-    suspense::{Suspense, Transition},
     server::ArcResource,
-    IntoView, view,
+    suspense::{Suspense, Transition},
+    view, IntoView,
 };
 
 use crate::signal::SsrSignalResource;
@@ -262,7 +264,10 @@ where
     /// included into the view tree to be returned by the component like
     /// in the above example, as that would ensure the update happen as
     /// the component renders.
-    pub fn update_with<Fut>(&self, fetcher: impl Fn() -> Fut + Send + Sync + 'static) -> impl IntoView
+    pub fn update_with<Fut>(
+        &self,
+        fetcher: impl Fn() -> Fut + Send + Sync + 'static,
+    ) -> impl IntoView
     where
         Fut: Future<Output = Option<T>> + Send + 'static,
     {
@@ -281,20 +286,17 @@ where
         // (and only) time under hydrate/CSR which would set the underlying
         // signal with the real expected value without the other end waiting.
         #[allow(unused_variables)]
-        let res = ArcResource::new(
-            || (),
-            {
-                let ctx = ctx.clone();
-                let fetcher = fetcher.clone();
-                move |_| {
-                    let ws = ctx.inner.write_only();
-                    let fut = fetcher();
-                    async move {
-                        ws.set(fut.await);
-                    }
+        let res = ArcResource::new(|| (), {
+            let ctx = ctx.clone();
+            let fetcher = fetcher.clone();
+            move |_| {
+                let ws = ctx.inner.write_only();
+                let fut = fetcher();
+                async move {
+                    ws.set(fut.await);
                 }
             }
-        );
+        });
         view! {
             <Suspense>{
                 let ctx = ctx.clone();
@@ -383,9 +385,7 @@ where
                 //     Some(v) => Some(v),
                 //     None => ctx.inner.read_only().await,
                 // };
-                Some(resource.await?
-                    .into_render()
-                    .into_any())
+                Some(resource.await?.into_render().into_any())
             })
         };
         view! { <Transition>{move || suspend() }</Transition> }

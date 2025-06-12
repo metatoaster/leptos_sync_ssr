@@ -172,9 +172,7 @@ impl CoReadyCoordinator {
     }
 
     fn register(&self, r: CoReady) {
-        self.inner.lock()
-            .expect("mutex not panicked")
-            .push(r);
+        self.inner.lock().expect("mutex not panicked").push(r);
     }
 
     /// Notifies all `CoReady` states that they are primed, if they are
@@ -185,10 +183,7 @@ impl CoReadyCoordinator {
     /// If there are no outstanding `ReadySender`s then they should stop
     /// waiting, otherwise they should continue to wait.
     pub(crate) fn notify(&self) {
-        for ready in self.inner.lock()
-            .expect("mutex not panicked")
-            .iter()
-        {
+        for ready in self.inner.lock().expect("mutex not panicked").iter() {
             if *ready.inner.sender.borrow() != Some(true) {
                 let _ = ready.inner.sender.send(Some(false));
             }
@@ -311,6 +306,12 @@ impl CoReady {
     }
 }
 
+impl Default for CoReady {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ReadyHandle {
     /// Subscribe to the [`Ready`] state.
     ///
@@ -379,8 +380,7 @@ impl CoReadySubscription {
 #[cfg(feature = "ssr")]
 impl ReadySubscriptionInner {
     pub(crate) async fn wait_inner(mut self) {
-        self
-            .receiver
+        self.receiver
             .wait_for(|v| *v == Some(true))
             .await
             .expect("internal error: sender not properly managed");
@@ -435,12 +435,11 @@ impl CoReadySubscriptionInner {
     pub(crate) async fn wait_inner(mut self) {
         let sender = &self.ready.inner.sender;
         let manual_complete = self.ready.inner.manual_complete;
-        self
-            .receiver
+        self.receiver
             .wait_for(|v| {
                 let v = *v;
-                v == Some(true) ||
-                    (!manual_complete && v == Some(false) && sender.sender_count() == 1)
+                v == Some(true)
+                    || (!manual_complete && v == Some(false) && sender.sender_count() == 1)
             })
             .await
             .expect("internal error: sender not properly managed");
@@ -449,10 +448,7 @@ impl CoReadySubscriptionInner {
 
 #[cfg(feature = "ssr")]
 impl ReadyInner {
-    pub(crate) fn new(
-        sender: Sender<Option<bool>>,
-        manual_complete: bool,
-    ) -> Self {
+    pub(crate) fn new(sender: Sender<Option<bool>>, manual_complete: bool) -> Self {
         Self {
             sender,
             manual_complete,
@@ -510,7 +506,12 @@ impl Ready {
 #[cfg(feature = "ssr")]
 impl Drop for ReadySender {
     fn drop(&mut self) {
-        if !*self.inner.manual_complete_armed.read().expect("not poisoned") {
+        if !*self
+            .inner
+            .manual_complete_armed
+            .read()
+            .expect("not poisoned")
+        {
             self.complete();
         }
     }

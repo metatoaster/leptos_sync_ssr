@@ -5,8 +5,8 @@ use leptos_sync_ssr::{component::SyncSsrSignal, portlet::PortletCtx};
 
 #[cfg(feature = "ssr")]
 mod ssr {
-    use leptos::prelude::Owner;
     pub use futures::StreamExt;
+    use leptos::prelude::Owner;
 
     pub fn init_renderer() -> Owner {
         let _ = any_spawner::Executor::init_tokio();

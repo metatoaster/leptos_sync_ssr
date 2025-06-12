@@ -3,8 +3,8 @@ use leptos::{children::Children, component, view, IntoView};
 
 #[cfg(feature = "ssr")]
 mod ssr {
-    pub use leptos::context::Provider;
     pub use crate::ready::{CoReadyCoordinator, Ready};
+    pub use leptos::context::Provider;
 }
 
 #[cfg(feature = "ssr")]
@@ -218,12 +218,9 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
 /// # });
 /// ```
 #[component]
-pub fn SyncSsrSignal<SetupFn>(
-    setup: SetupFn,
-    children: Children
-) -> impl IntoView
+pub fn SyncSsrSignal<SetupFn>(setup: SetupFn, children: Children) -> impl IntoView
 where
-    SetupFn: FnOnce() + Clone + Send + 'static
+    SetupFn: FnOnce() + Clone + Send + 'static,
 {
     #[cfg(feature = "ssr")]
     let coord = CoReadyCoordinator::new();

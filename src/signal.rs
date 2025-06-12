@@ -7,11 +7,11 @@ use std::{
 
 use leptos::{
     reactive::{
-        traits::{DefinedAt, Get, GetUntracked, IsDisposed, Notify, UntrackableGuard, Write},
         signal::{
+            guards::{UntrackedWriteGuard, WriteGuard},
             ArcReadSignal, ArcRwSignal, ArcWriteSignal,
-            guards::{WriteGuard, UntrackedWriteGuard},
         },
+        traits::{DefinedAt, Get, GetUntracked, IsDisposed, Notify, UntrackableGuard, Write},
     },
     server::ArcResource,
 };
@@ -42,7 +42,7 @@ use crate::ready::{CoReady, ReadySender};
 
 #[derive(Clone)]
 pub struct SsrSignalResource<T> {
-    inner: Arc<SsrSignalResourceInner<T>>
+    inner: Arc<SsrSignalResourceInner<T>>,
 }
 
 struct SsrSignalResourceInner<T> {
@@ -445,7 +445,7 @@ impl<T> SsrSignalResource<T> {
                 signal_write: self.inner.signal_write.clone(),
                 #[cfg(feature = "ssr")]
                 ready_sender: self.inner.ready.to_ready_sender(),
-            })
+            }),
         }
     }
 
