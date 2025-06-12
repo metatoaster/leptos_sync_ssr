@@ -1,0 +1,13 @@
+extend = [
+    { path = "./cargo-leptos.toml" },
+    { path = "./webdriver.toml" },
+]
+
+[tasks.integration-test]
+dependencies = ["start-webdriver", "cargo-leptos-e2e"]
+
+[tasks.integration-test-actix]
+dependencies = ["start-webdriver", "cargo-leptos-e2e-actix"]
+
+[tasks.integration-test-axum]
+dependencies = ["start-webdriver", "cargo-leptos-e2e-axum"]

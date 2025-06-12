@@ -1,0 +1,11 @@
+[tasks.cargo-leptos-e2e]
+command = "cargo"
+args = ["leptos", "end-to-end"]
+
+[tasks.cargo-leptos-e2e-actix]
+command = "cargo"
+args = ["leptos", "end-to-end", "--bin-features=actix"]
+
+[tasks.cargo-leptos-e2e-axum]
+command = "cargo"
+args = ["leptos", "end-to-end", "--bin-features=axum"]
