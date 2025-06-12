@@ -282,7 +282,7 @@ impl<T> SsrSignalResource<T> {
     /// #
     /// #     let new_tasks = tasks.clone();
     /// #     let app = view! {
-    /// #         <SyncSsrSignal>{
+    /// #         <SyncSsrSignal setup=|| ()>{
     /// #             let mut new_tasks = new_tasks.lock().unwrap();
     /// let ssrsigres = SsrSignalResource::new(String::new());
     /// // it's assumed that its `read_only` resource passed elsewhere for use
@@ -356,7 +356,7 @@ impl<T> SsrSignalResource<T> {
     /// #
     /// #     let new_tasks = tasks.clone();
     /// #     let app = view! {
-    /// #         <SyncSsrSignal>{
+    /// #         <SyncSsrSignal setup=|| ()>{
     /// #             let mut new_tasks = new_tasks.lock().unwrap();
     /// let ssrsigres = SsrSignalResource::new(String::new());
     /// // it's assumed that its `read_only` resource passed elsewhere for use

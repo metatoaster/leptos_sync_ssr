@@ -265,29 +265,28 @@ pub fn App() -> impl IntoView {
                     <A href="/article/">"Articles"</A>
                 </nav>
             </header>
-            <SyncSsrSignal>{
+            <SyncSsrSignal setup=|| {
                 NavPortletCtx::provide();
                 InfoPortletCtx::provide();
-                view! {
-                    <main>
-                        <aside>
-                            <NavPortlet/>
-                            <InfoPortlet/>
-                        </aside>
-                        <article>
-                            <Routes fallback>
-                                <Route path=path!("") view=HomePage/>
-                                <AuthorRoutes/>
-                                <ArticleRoutes/>
-                            </Routes>
-                        </article>
-                        // Uncomment this aside after should work also
-                        // <aside>
-                        //     <NavPortlet/>
-                        // </aside>
-                    </main>
-                }
-            }</SyncSsrSignal>
+            }>
+                <main>
+                    <aside>
+                        <NavPortlet/>
+                        <InfoPortlet/>
+                    </aside>
+                    <article>
+                        <Routes fallback>
+                            <Route path=path!("") view=HomePage/>
+                            <AuthorRoutes/>
+                            <ArticleRoutes/>
+                        </Routes>
+                    </article>
+                    // Uncomment this aside after should work also
+                    // <aside>
+                    //     <NavPortlet/>
+                    // </aside>
+                </main>
+            </SyncSsrSignal>
         </Router>
     }
 }

@@ -89,28 +89,42 @@ fn SetterUsed(mode: Option<Mode>) -> impl IntoView {
 
 #[component]
 fn SetterInSuspense() -> impl IntoView {
+    // While the value is set through the signal, it will not be read, due
+    // to how `Suspense` works.
     let sr = expect_context::<SsrSignalResource<String>>();
-    // TODO explain in more detail why this doesn't work
-    // simply because the suspend is disposed in SSR in the first pass upon encounter
-    // of await which disposes the write signal, causing the resource to resolve.
     view! {
         <Suspense>
         {move || {
             let sr = sr.clone();
+            // This does not in fact render successfully.
             Suspend::new(async move {
+                // First pass - this ensures the lock...
                 let ws = sr.write_only();
-                // a timeout here to emulate server function delay.
+                // However, upon this await point, the whole `Suspend` is
+                // dropped, which also drops the write_only signal, which
+                // signals to the read_only end that it can read and return
+                // the value... which is the dfault.
                 #[cfg(feature = "ssr")]
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 let value = "Hello world!";
+                // So even when the second pass got to this point, it's
+                // never read.
                 ws.set(value.to_string());
                 format!("resource write signal setting value: {value}")
+                // What if the drop is not signaled and a flag is held to
+                // keep it armed?  The `Suspense` that is ultimately waiting
+                // on the signal (`<Indicator/>`) will never return, which
+                // means this `Suspense` will also never get to run, which
+                // results in a deadlock as the resolver is locked out from
+                // being executed.
+                //
+                // Hence it's typically better to rely on the default case
+                // which avoids the deadlock situation.
             })
         }}
         </Suspense>
     }
 }
-
 
 /*
 #[component]
@@ -207,19 +221,18 @@ async fn render_setter_set_in_suspense() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <Indicator />
-                <SetterInSuspense />
-            }
-        }</SyncSsrSignal>
+        }>
+            <Indicator />
+            <SetterInSuspense />
+        </SyncSsrSignal>
     };
-    // assert_eq!(
-    //     app.to_html_stream_in_order().collect::<String>().await,
-    //     "<p>Indicator is: <!>Hello world!</p>resource write signal setting value: Hello world!<!>",
-    // );
+    assert_eq!(
+        app.to_html_stream_in_order().collect::<String>().await,
+        "<!><p>Indicator is: <!> </p>resource write signal setting value: Hello world!<!>",
+    );
 }
 
 #[cfg(feature = "ssr")]
@@ -228,18 +241,17 @@ async fn render_setter_set() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <Indicator />
-                <SetterUsed mode=Some(Mode::Set) />
-            }
-        }</SyncSsrSignal>
+        }>
+            <Indicator />
+            <SetterUsed mode=Some(Mode::Set) />
+        </SyncSsrSignal>
     };
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "<p>Indicator is: <!>Hello world!</p>resource write signal setting value: Hello world!<!>",
+        "<!><p>Indicator is: <!>Hello world!</p>resource write signal setting value: Hello world!<!>",
     );
 }
 
@@ -249,18 +261,17 @@ async fn render_setter_update() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <Indicator />
-                <SetterUsed mode=Some(Mode::Update) />
-            }
-        }</SyncSsrSignal>
+        }>
+            <Indicator />
+            <SetterUsed mode=Some(Mode::Update) />
+        </SyncSsrSignal>
     };
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "<p>Indicator is: <!>Hello world!</p>resource write signal pushed value: Hello world!<!>",
+        "<!><p>Indicator is: <!>Hello world!</p>resource write signal pushed value: Hello world!<!>",
     );
 }
 
@@ -270,18 +281,18 @@ async fn render_setter_update_untracked() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <Indicator />
-                <SetterUsed mode=Some(Mode::UpdateUntracked) />
-            }
-        }</SyncSsrSignal>
+        }>
+            <Indicator />
+            <SetterUsed mode=Some(Mode::UpdateUntracked) />
+        </SyncSsrSignal>
     };
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "<p>Indicator is: <!>Hello world!</p>resource write signal pushed value (untracked): Hello world!<!>",
+        "<!><p>Indicator is: <!>Hello world!</p>\
+        resource write signal pushed value (untracked): Hello world!<!>",
     );
 }
 
@@ -291,18 +302,17 @@ async fn render_setter_not_set() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <Indicator />
-                <SetterUsed mode=None />
-            }
-        }</SyncSsrSignal>
+        }>
+            <Indicator />
+            <SetterUsed mode=None />
+        </SyncSsrSignal>
     };
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "<p>Indicator is: <!> </p>resource write signal setting no value<!>",
+        "<!><p>Indicator is: <!> </p>resource write signal setting no value<!>",
     );
 }
 
@@ -312,18 +322,17 @@ async fn setter_set_render() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <SetterUsed mode=Some(Mode::Set) />
-                <Indicator />
-            }
-        }</SyncSsrSignal>
+        }>
+            <SetterUsed mode=Some(Mode::Set) />
+            <Indicator />
+        </SyncSsrSignal>
     };
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "resource write signal setting value: Hello world!<p>Indicator is: <!>Hello world!</p><!>",
+        "<!>resource write signal setting value: Hello world!<p>Indicator is: <!>Hello world!</p><!>",
     );
 }
 
@@ -333,18 +342,17 @@ async fn setter_update_render() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <SetterUsed mode=Some(Mode::Update) />
-                <Indicator />
-            }
-        }</SyncSsrSignal>
+        }>
+            <SetterUsed mode=Some(Mode::Update) />
+            <Indicator />
+        </SyncSsrSignal>
     };
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "resource write signal pushed value: Hello world!<p>Indicator is: <!>Hello world!</p><!>",
+        "<!>resource write signal pushed value: Hello world!<p>Indicator is: <!>Hello world!</p><!>",
     );
 }
 
@@ -354,18 +362,18 @@ async fn setter_update_untracked_render() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <SetterUsed mode=Some(Mode::UpdateUntracked) />
-                <Indicator />
-            }
-        }</SyncSsrSignal>
+        }>
+            <SetterUsed mode=Some(Mode::UpdateUntracked) />
+            <Indicator />
+        </SyncSsrSignal>
     };
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "resource write signal pushed value (untracked): Hello world!<p>Indicator is: <!>Hello world!</p><!>",
+        "<!>resource write signal pushed value (untracked): Hello world!\
+        <p>Indicator is: <!>Hello world!</p><!>",
     );
 }
 
@@ -375,18 +383,17 @@ async fn setter_not_set_render() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <SetterUsed mode=None />
-                <Indicator />
-            }
-        }</SyncSsrSignal>
+        }>
+            <SetterUsed mode=None />
+            <Indicator />
+        </SyncSsrSignal>
     };
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "resource write signal setting no value<p>Indicator is: <!> </p><!>",
+        "<!>resource write signal setting no value<p>Indicator is: <!> </p><!>",
     );
 }
 
@@ -397,14 +404,13 @@ async fn misused_write_only_cloned() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <Indicator />
-                <SetterMisusedWriteOnlyCloned />
-            }
-        }</SyncSsrSignal>
+        }>
+            <Indicator />
+            <SetterMisusedWriteOnlyCloned />
+        </SyncSsrSignal>
     };
     // Note that should the write signal be clonable, the naive implementation
     // of `CoReadyCoordinator::notify` would reset the value from Some(true)
@@ -415,7 +421,7 @@ async fn misused_write_only_cloned() {
     // happen due to the early drop and will not result in the correct value.
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "<p>Indicator is: <!>Hello world!</p>resource write signal setting value: Hello world!<!>",
+        "<!><p>Indicator is: <!>Hello world!</p>resource write signal setting value: Hello world!<!>",
     );
 }
 */
@@ -426,20 +432,19 @@ async fn misused_write_only_created_late() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <Indicator />
-                <SetterMisusedWriteOnlyCreatedLate />
-            }
-        }</SyncSsrSignal>
+        }>
+            <Indicator />
+            <SetterMisusedWriteOnlyCreatedLate />
+        </SyncSsrSignal>
     };
     // note that the resource wrote the signal but the indicator is unable to show it.
     // also note that there is no deadlock.
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "<p>Indicator is: <!> </p>resource write signal setting value: Hello world!<!>",
+        "<!><p>Indicator is: <!> </p>resource write signal setting value: Hello world!<!>",
     );
 }
 
@@ -449,14 +454,13 @@ async fn misused_write_only_kept_alive_deadlocks() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <Indicator />
-                <SetterMisusedWriteOnlyKeptAlive />
-            }
-        }</SyncSsrSignal>
+        }>
+            <Indicator />
+            <SetterMisusedWriteOnlyKeptAlive />
+        </SyncSsrSignal>
     };
 
     // This deadlock happens because the setter was kept alive in the reactive
@@ -473,18 +477,17 @@ async fn render_indicator_only() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
+        <SyncSsrSignal setup=|| {
             let sr = SsrSignalResource::new(String::new());
             provide_context(sr.clone());
-            view! {
-                <Indicator />
-            }
-        }</SyncSsrSignal>
+        }>
+            <Indicator />
+        </SyncSsrSignal>
     };
     // no setter should not cause a deadlock.
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "<p>Indicator is: <!> </p><!>",
+        "<!><p>Indicator is: <!> </p><!>",
     );
 }
 

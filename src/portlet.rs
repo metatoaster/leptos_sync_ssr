@@ -111,25 +111,24 @@ where
     ///     // <PortletCtx<Nav>>::provide();
     ///     view! {
     ///         <Router>
-    ///             <SyncSsrSignal>{
+    ///             <SyncSsrSignal setup=|| {
     ///                 // This is fine as this is inside `<SyncSsrSignal/>`.
     ///                 <PortletCtx<Nav>>::provide();
-    ///                 // Other provides and code may go here.
-    ///                 view! {
-    ///                     <header>
-    ///                         // The portlet component, refer to documentation on
-    ///                         // `.render()` for how this component may be defined.
-    ///                         <NavPortlet/>
-    ///                     </header>
-    ///                     <article>
-    ///                         <Routes fallback>
-    ///                             <Route path=path!("") view=HomePage/>
-    ///                             <Route path=path!("authors") view=AuthorListing/>
-    ///                             // plus other routes
-    ///                         </Routes>
-    ///                     </article>
-    ///                 }
-    ///             }</SyncSsrSignal>
+    ///                 // Other provides and other setup code may go here.
+    ///             }>
+    ///                 <header>
+    ///                     // The portlet component, refer to documentation on
+    ///                     // `.render()` for how this component may be defined.
+    ///                     <NavPortlet/>
+    ///                 </header>
+    ///                 <article>
+    ///                     <Routes fallback>
+    ///                         <Route path=path!("") view=HomePage/>
+    ///                         <Route path=path!("authors") view=AuthorListing/>
+    ///                         // plus other routes
+    ///                     </Routes>
+    ///                 </article>
+    ///             </SyncSsrSignal>
     ///         </Router>
     ///     }
     /// }

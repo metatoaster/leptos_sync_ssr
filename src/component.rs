@@ -122,7 +122,14 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
 /// Given how [`SsrSignalResource`](crate::signal::SsrSignalResource)
 /// requires the `CoReadyCoordinator` be available as a context, usage
 /// of this component to enclose the components making use of that type
-/// is the recommended way to setup and teardown the context.
+/// is the recommended way to setup and have the `CoReadyCoordinator`
+/// notify during teardown.
+///
+/// A setup function is provided as a convenient way to have definitions
+/// that should be immediately set up after the `CoReadyCoordinator` is
+/// available.  This is typically used to provide additional contexts of
+/// `SsrSignalResource` which may be required by the other children
+/// components.
 ///
 /// This enables the correct processing order to ensure that the values
 /// to be provided by the resource is provided after waiting correctly.
@@ -147,40 +154,40 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
 ///
 /// #[component]
 /// pub fn App() -> impl IntoView {
-///     let fallback = || view! { "Page not found." }.into_view();
-///     // This would panic here
+///     // This would panic here due to missing `CoReadyCoordinator` context.
 ///     // let breadcrumbs = SsrSignalResource::new(BreadCrumbs::Home);
 ///     view! {
 ///         <Router>
-///             <SyncSsrSignal>{
-///                 // Provide the SsrSignalResource here
+///             <SyncSsrSignal setup=|| {
+///                 // Provide the SsrSignalResource here in the setup function
 ///                 let breadcrumbs = SsrSignalResource::new(BreadCrumbs::Home);
 ///                 provide_context(breadcrumbs);
-///
-///                 view! {
-///                     <header>
-///                         <Breadcrumbs/>
-///                     </header>
-///                     <article>
-///                         <Routes fallback=|| ()>
-///                             <Route path=path!("") view=HomePage/>
-///                             <AuthorRoutes/>
-///                             <ArticleRoutes/>
-///                         </Routes>
-///                     </article>
-///                 }
-///             }</SyncSsrSignal>
+///             }>
+///                 <header>
+///                     <Breadcrumbs/>
+///                 </header>
+///                 <article>
+///                     <Routes fallback=|| ()>
+///                         <Route path=path!("") view=HomePage/>
+///                         <AuthorRoutes/>
+///                         <ArticleRoutes/>
+///                     </Routes>
+///                 </article>
+///             </SyncSsrSignal>
 ///         </Router>
 ///     }
+/// }
+///
+/// #[component]
+/// fn Breadcrumbs() -> impl IntoView {
+///     // acquire the `SsrSignalResource<BreadCrumbs>` context here...
+///     let breadcrumbs = expect_context::<SsrSignalResource<BreadCrumbs>>();
+///     // ... and use its `ArcResource` to produce some rendering
+/// #     ()
 /// }
 /// #
 /// # #[component]
 /// # fn HomePage() -> impl IntoView {
-/// #     ()
-/// # }
-/// #
-/// # #[component]
-/// # fn Breadcrumbs() -> impl IntoView {
 /// #     ()
 /// # }
 /// #
@@ -210,9 +217,14 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
 /// #     let _ = view! { <App/> }.to_html();
 /// # });
 /// ```
-
 #[component]
-pub fn SyncSsrSignal(children: Children) -> impl IntoView {
+pub fn SyncSsrSignal<SetupFn>(
+    setup: SetupFn,
+    children: Children
+) -> impl IntoView
+where
+    SetupFn: FnOnce() + Clone + Send + 'static
+{
     #[cfg(feature = "ssr")]
     let coord = CoReadyCoordinator::new();
 
@@ -225,6 +237,7 @@ pub fn SyncSsrSignal(children: Children) -> impl IntoView {
     #[cfg(feature = "ssr")]
     let result = view! {
         <Provider value=coord>
+            {setup()}
             {children()}
             {exit}
         </Provider>
@@ -232,6 +245,7 @@ pub fn SyncSsrSignal(children: Children) -> impl IntoView {
 
     #[cfg(not(feature = "ssr"))]
     let result = view! {
+        {setup()}
         {children()}
         {}
     };

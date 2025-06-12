@@ -1,8 +1,7 @@
 use std::time::Duration;
 
 use leptos::prelude::*;
-use leptos_sync_ssr::{component::SyncSsrSignal, portlet::PortletCtx, signal::SsrSignalResource};
-use tokio::time::timeout;
+use leptos_sync_ssr::{component::SyncSsrSignal, portlet::PortletCtx};
 
 #[cfg(feature = "ssr")]
 mod ssr {
@@ -45,7 +44,7 @@ pub fn Setter() -> impl IntoView {
         {ctx.update_with(move || {
             async move {
                 #[cfg(feature = "ssr")]
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                tokio::time::sleep(Duration::from_millis(100)).await;
                 Some(Item("Hello world!".to_string()))
             }
         })}
@@ -58,16 +57,13 @@ async fn portlet_setter() {
     let _owner = init_renderer();
 
     let app = view! {
-        <SyncSsrSignal>{
-            Ctx::provide();
-            view! {
-                <Portlet />
-                <Setter />
-            }
-        }</SyncSsrSignal>
+        <SyncSsrSignal setup=|| Ctx::provide()>
+            <Portlet />
+            <Setter />
+        </SyncSsrSignal>
     };
     assert_eq!(
         app.to_html_stream_in_order().collect::<String>().await,
-        "Hello world!<!><!>",
+        "<!>Hello world!<!><!>",
     );
 }
