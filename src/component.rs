@@ -1,5 +1,8 @@
 //! Provides the [`SyncSsr`] and [`SyncSsrSignal`] components.
 use leptos::{children::Children, component, view, IntoView};
+// See: https://github.com/leptos-rs/leptos/pull/4071
+#[allow(unused_imports)]
+use leptos::prelude::IntoMaybeErased;
 
 #[cfg(feature = "ssr")]
 mod ssr {
