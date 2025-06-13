@@ -1,3 +1,7 @@
+[![CI](https://github.com/metatoaster/leptos_sync_ssr/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/metatoaster/leptos_sync_ssr/actions/workflows/build.yml?query=branch:main)
+[![crates.io](https://img.shields.io/crates/v/leptos_sync_ssr)](https://crates.io/crates/leptos_sync_ssr/)
+[![docs.rs](https://docs.rs/leptos_sync_ssr/badge.svg)](https://docs.rs/leptos_sync_ssr/latest/leptos_sync_ssr/)
+
 # `leptos_sync_ssr`
 
 `leptos_sync_ssr` provides helpers to synchronize the access of Leptos
