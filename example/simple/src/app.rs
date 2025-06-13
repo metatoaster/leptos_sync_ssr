@@ -79,9 +79,7 @@ pub fn HomePage() -> impl IntoView {
 }
 
 #[component]
-pub fn UsingSignal(
-    rs: ReadSignal<Option<OnceResource<String>>>,
-) -> impl IntoView {
+pub fn UsingSignal(rs: ReadSignal<Option<OnceResource<String>>>) -> impl IntoView {
     // Ready will have _no_ effect whatsoever if this component is not
     // enclosed by the `SyncSsr` component.
     // #[cfg(feature = "ssr")]
@@ -100,16 +98,19 @@ pub fn UsingSignal(
                 // #[cfg(feature = "ssr")]
                 ready.subscribe().wait().await;
                 // leptos::logging::log!("subscription finished waiting");
-                let value = if let Some(Some(res)) = rs.try_get() {
+                // let value = if let Some(Some(res)) = rs.try_get() {
+                if let Some(Some(res)) = rs.try_get() {
                     // leptos::logging::log!("readsignal has OnceResource");
-                    let result = Some(res.await);
+                    // let result = Some(res.await);
                     // leptos::logging::log!("finished awaiting for OnceResource");
-                    result
+                    // result
+                    Some(res.await)
                 } else {
                     None
-                };
+                }
+                // };
                 // leptos::logging::log!("value: {value:?}");
-                value
+                // value
             }
         },
     );
@@ -120,18 +121,22 @@ pub fn UsingSignal(
             <Suspense>{
                 move || Suspend::new(async move {
                     // leptos::logging::log!("Inside suspense");
-                    let result = if let Some(value) = value.await {
-                        // leptos::logging::log!("value.await got Some");
-                        Some(view! {
-                            <strong id="target">{value}</strong>
-                        }
-                        .into_any())
-                    } else {
-                        // leptos::logging::log!("value.await got None");
-                        None
-                    };
+                    // let result = if let Some(value) = value.await {
+                    //     leptos::logging::log!("value.await got Some");
+                    //     Some(view! {
+                    //         <strong id="target">{value}</strong>
+                    //     }
+                    //     .into_any())
+                    // } else {
+                    //     leptos::logging::log!("value.await got None");
+                    //     None
+                    // };
                     // leptos::logging::log!("Suspense rendered");
-                    result
+                    // result
+                    value.await.map(|value| view! {
+                        <strong id="target">{value}</strong>
+                    }
+                    .into_any())
                 })
             }</Suspense>
             "."
@@ -140,29 +145,24 @@ pub fn UsingSignal(
 }
 
 #[component]
-pub fn SettingSignal(
-    ws: WriteSignal<Option<OnceResource<String>>>,
-) -> impl IntoView {
+pub fn SettingSignal(ws: WriteSignal<Option<OnceResource<String>>>) -> impl IntoView {
     on_cleanup(move || {
         // leptos::logging::log!("Running on_cleanup");
         ws.try_set(None);
     });
 
-    let server_call = Resource::new_blocking(
-        || (),
-        |_| async move {
-            server_call().await
-        },
-    );
+    let server_call = Resource::new_blocking(|| (), |_| async move { server_call().await });
 
     let static_value = "Hello World!";
     // while the resource can be set via the signal directly here, having
     // a hook that gets called when the view is initiated emulates a kind
     // of reactivity that would determine whether or not it is set.
-    let hook = move || ws.set(Some(OnceResource::new(async move {
-        let _ = server_call.await;
-        static_value.to_string()
-    })));
+    let hook = move || {
+        ws.set(Some(OnceResource::new(async move {
+            let _ = server_call.await;
+            static_value.to_string()
+        })))
+    };
     view! {
         {hook}
         // If the following block is inside a Suspense that awaits some
@@ -223,8 +223,7 @@ pub fn NonIssue() -> impl IntoView {
 
 #[component]
 pub fn HydrationIssue(
-    #[prop(default = "Below can result in hydration issue")]
-    title: &'static str,
+    #[prop(default = "Below can result in hydration issue")] title: &'static str,
     children: Children,
 ) -> impl IntoView {
     let (rs, ws) = signal(None::<OnceResource<String>>);

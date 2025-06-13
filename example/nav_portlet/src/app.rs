@@ -1,11 +1,11 @@
 use leptos::prelude::*;
-use leptos_meta::{MetaTags, *};
+use leptos_meta::{provide_meta_context, Meta, MetaTags, Stylesheet, Title};
 use leptos_router::{
     components::{ParentRoute, Route, Router, Routes, A},
     hooks::use_params,
     nested_router::Outlet,
     params::Params,
-    path, MatchNestedRoutes, ParamSegment, SsrMode, StaticSegment,
+    path, ParamSegment, SsrMode, StaticSegment,
 };
 
 use leptos_sync_ssr::component::SyncSsrSignal;
@@ -304,7 +304,7 @@ pub fn HomePage() -> impl IntoView {
 }
 
 #[component]
-pub fn AuthorRoutes() -> impl MatchNestedRoutes + Clone {
+pub fn AuthorRoutes() -> impl leptos_router::MatchNestedRoutes + Clone {
     view! {
         <ParentRoute path=StaticSegment("author") view=AuthorContainer ssr=SsrMode::Async>
             <Route path=StaticSegment("/") view=AuthorListing/>
@@ -389,7 +389,7 @@ pub fn AuthorTop() -> impl IntoView {
     let nav_ctx = expect_context::<NavPortletCtx>();
     let info_ctx = expect_context::<InfoPortletCtx>();
 
-    #[cfg(not(feature="ssr"))]
+    #[cfg(not(feature = "ssr"))]
     on_cleanup({
         let nav_ctx = nav_ctx.clone();
         let info_ctx = info_ctx.clone();
@@ -468,7 +468,7 @@ pub fn AuthorOverview() -> impl IntoView {
 }
 
 #[component]
-pub fn ArticleRoutes() -> impl MatchNestedRoutes + Clone {
+pub fn ArticleRoutes() -> impl leptos_router::MatchNestedRoutes + Clone {
     view! {
         <ParentRoute path=StaticSegment("article") view=ArticleContainer ssr=SsrMode::Async>
             <Route path=StaticSegment("/") view=ArticleListing/>
