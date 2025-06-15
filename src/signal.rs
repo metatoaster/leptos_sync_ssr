@@ -1,12 +1,13 @@
 //! Provides the signal-resource pairing for synchronized SSR.
 use std::{
-    future::Future,
     fmt::{Debug, Formatter, Result},
+    future::Future,
     panic::Location,
     sync::Arc,
 };
 
 use leptos::{
+    prelude::Suspend,
     reactive::{
         signal::{
             guards::{UntrackedWriteGuard, WriteGuard},
@@ -14,7 +15,9 @@ use leptos::{
         },
         traits::{DefinedAt, Get, GetUntracked, IsDisposed, Notify, Set, UntrackableGuard, Write},
     },
-    IntoView, prelude::Suspend, server::ArcResource, suspense::Suspense, view,
+    server::ArcResource,
+    suspense::Suspense,
+    view, IntoView,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -122,7 +125,7 @@ where
 
         Self {
             #[cfg(feature = "ssr")]
-            ready: ready,
+            ready,
             signal_read,
             signal_write,
             resource,
@@ -533,10 +536,7 @@ impl<T> SsrSignalResource<T> {
     /// included into the view tree to be returned by the component like
     /// in the above example to ensure the update happen as the component
     /// renders.
-    pub fn set_with<Fut>(
-        &self,
-        fetcher: impl Fn() -> Fut + Send + Sync + 'static,
-    ) -> impl IntoView
+    pub fn set_with<Fut>(&self, fetcher: impl Fn() -> Fut + Send + Sync + 'static) -> impl IntoView
     where
         T: Clone + Send + Sync + 'static,
         Fut: Future<Output = T> + Send + 'static,
@@ -600,7 +600,6 @@ impl<T> SsrSignalResource<T> {
         };
         result
     }
-
 }
 
 impl<T> Debug for SsrSignalResource<T> {

@@ -250,10 +250,7 @@ where
     /// included into the view tree to be returned by the component like
     /// in the above example, as that would ensure the update happen as
     /// the component renders.
-    pub fn set_with<Fut>(
-        &self,
-        fetcher: impl Fn() -> Fut + Send + Sync + 'static,
-    ) -> impl IntoView
+    pub fn set_with<Fut>(&self, fetcher: impl Fn() -> Fut + Send + Sync + 'static) -> impl IntoView
     where
         Fut: Future<Output = Option<T>> + Send + 'static,
     {
