@@ -297,29 +297,38 @@ where
                 }
             }
         });
-        view! {
+        // Under SSR, the resource declared above must be used to ensure the
+        // write signal is set at the appropriate time after the unlock as
+        // per the usage of the provided `write_only` signal.
+        #[cfg(feature = "ssr")]
+        let result = view! {
+            <Suspense>{
+                move || {
+                    let res = res.clone();
+                    Suspend::new(async move {
+                        res.await;
+                    })
+                }
+            }</Suspense>
+        };
+        // Under not SSR (i.e. hydrate/CSR), the suspend can invoke the
+        // future directly to apply the result to the underlying
+        // `ArcWriteSignal`.
+        #[cfg(not(feature = "ssr"))]
+        let result = view! {
             <Suspense>{
                 let ctx = ctx.clone();
                 let fetcher = fetcher.clone();
                 move || {
-                    #[cfg(feature = "ssr")]
-                    let res = res.clone();
                     let ctx = ctx.clone();
                     let fut = fetcher();
                     Suspend::new(async move {
-                        // Again, only under SSR we need the unlock signal.
-                        // Under CSR, this signal is absent so use the fetcher
-                        // directly to acquire the future to acquire the value
-                        // to update
-                        #[cfg(feature = "ssr")]
-                        res.await;
-                        // This must be done normally anyway to ensure the
-                        // read signal is updated on the other end.
                         ctx.inner.inner_write_only().set(fut.await);
                     })
                 }
             }</Suspense>
-        }
+        };
+        result
     }
 
     /// A generic portlet renderer via this generic portlet context.
