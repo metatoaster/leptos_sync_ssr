@@ -36,7 +36,7 @@ use crate::signal::SsrSignalResource;
 ///
 /// Internally this contains an [`SsrSignalResource<Option<T>>`].  While no
 /// direct access to that underlying is provided, its write signal may be
-/// indirectly used through [`PortletCtx::update_with`], where the guidelines
+/// indirectly used through [`PortletCtx::set_with`], where the guidelines
 /// around the use of `SsrSignalResource` are completely followed to ensure
 /// the expected usage and end-user experience.  The only way this may be
 /// constructed is through the [`PortletCtx::provide`] method to encourage
@@ -183,7 +183,10 @@ where
         expect_context::<PortletCtx<T>>()
     }
 
-    /// Update the portlet with the provided data fetcher.
+    /// Set the portlet with the provided data fetcher.
+    ///
+    /// This helper function returns a view that should be added to the
+    /// view tree such that the desired set function can be effected.
     ///
     /// Similar to the fetcher for typical `Resource`s, this use it to
     /// generates a new `Future` to get the latest data.  When created
@@ -239,7 +242,7 @@ where
     ///     view! {
     ///         // This ensures `PortletCtx<Nav>` is updated with data provided by
     ///         // `authors`.
-    ///         {nav_ctx.update_with(move || {
+    ///         {nav_ctx.set_with(move || {
     ///             let authors = authors.clone();
     ///             // Optionally ensure updates to the authors resource are tracked;
     ///             // this particular usage is a current workaround.
@@ -264,7 +267,7 @@ where
     /// included into the view tree to be returned by the component like
     /// in the above example, as that would ensure the update happen as
     /// the component renders.
-    pub fn update_with<Fut>(
+    pub fn set_with<Fut>(
         &self,
         fetcher: impl Fn() -> Fut + Send + Sync + 'static,
     ) -> impl IntoView

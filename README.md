@@ -217,7 +217,7 @@ fn BlogView() -> impl IntoView {
     let nav_ctx = expect_context::<PortletCtx<Breadcrumbs>>();
 
     view! {
-        // Pass `.update_with()` with a `Future` that returns the value
+        // Pass `.set_with()` with a `Future` that returns the value
         // expected, in this case it would be the `Breadcrumbs` to be
         // rendered.  This function returns a `Suspense` view which will
         // drive the update.
@@ -225,7 +225,7 @@ fn BlogView() -> impl IntoView {
         // If the portlet is intended to be reactive based on resources,
         // the resources should be tracked here, but only for CSR.
         // Refer to documentation for details.
-        {nav_ctx.update_with(move || {
+        {nav_ctx.set_with(move || {
             let blog = blog.clone();
             async move {
                 blog.await

@@ -41,7 +41,7 @@ pub fn Setter() -> impl IntoView {
     let ctx = expect_context::<Ctx>();
 
     view! {
-        {ctx.update_with(move || {
+        {ctx.set_with(move || {
             async move {
                 #[cfg(feature = "ssr")]
                 tokio::time::sleep(Duration::from_millis(100)).await;

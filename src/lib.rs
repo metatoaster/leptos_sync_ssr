@@ -108,7 +108,7 @@
 //!     view! {
 //!         // This ensures `PortletCtx<Breadcrumbs>` is updated with data provided by
 //!         // `authors`.
-//!         {nav_ctx.update_with(move || {
+//!         {nav_ctx.set_with(move || {
 //!             let blog = blog.clone();
 //!             async move {
 //!                 blog.await
