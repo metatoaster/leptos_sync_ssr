@@ -400,38 +400,44 @@ pub fn AuthorTop() -> impl IntoView {
     });
 
     view! {
-        {nav_ctx.set_with(move || {
-            let authors = authors.clone();
-            #[cfg(not(feature = "ssr"))]
-            authors.track();
-            async move {
-                authors.await
-                    .map(|authors| {
-                        authors
-                            .into_iter()
-                            .map(move |(id, author)| NavItem {
-                                href: format!("/author/{id}/"),
-                                text: author.name.to_string(),
-                            })
-                            .collect::<Vec<_>>()
-                            .into()
-                    })
-                    .ok()
-            }
-        })}
-        {info_ctx.set_with(move || {
-            let author = author.clone();
-            #[cfg(not(feature = "ssr"))]
-            author.track();
-            async move {
-                author.await
-                    .map(|(id, _)| Info {
-                        entity: "Author".to_string(),
-                        id,
-                    })
-                    .ok()
-            }
-        })}
+        {nav_ctx.update_with(
+            move || {
+                let authors = authors.clone();
+                #[cfg(not(feature = "ssr"))]
+                authors.track();
+                async move {
+                    authors.await
+                        .map(|authors| {
+                            authors
+                                .into_iter()
+                                .map(move |(id, author)| NavItem {
+                                    href: format!("/author/{id}/"),
+                                    text: author.name.to_string(),
+                                })
+                                .collect::<Vec<_>>()
+                                .into()
+                        })
+                        .ok()
+                }
+            },
+            |existing, new| *existing = new
+        )}
+        {info_ctx.update_with(
+            move || {
+                let author = author.clone();
+                #[cfg(not(feature = "ssr"))]
+                author.track();
+                async move {
+                    author.await
+                        .map(|(id, _)| Info {
+                            entity: "Author".to_string(),
+                            id,
+                        })
+                        .ok()
+                }
+            },
+            |existing, new| *existing = new
+        )}
         <h3>"<AuthorTop/>"</h3>
         <Outlet/>
     }

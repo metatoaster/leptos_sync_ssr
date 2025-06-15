@@ -257,6 +257,83 @@ where
         self.inner.set_with(fetcher)
     }
 
+    /// Update the portlet with the provided data fetcher and the
+    /// updater function.
+    ///
+    /// This helper function returns a view that should be added to the
+    /// view tree such that the desired set function can be effected.
+    /// See [`SsrSignalResource::update_with`] for full documentation.
+    ///
+    /// Typical usage may look like this.
+    ///
+    /// ```
+    /// # use leptos::{
+    /// #     prelude::{AnyView, IntoAny, IntoRender, ServerFnError, expect_context},
+    /// #     server::ArcResource,
+    /// #     component, view, IntoView,
+    /// # };
+    /// # use leptos_sync_ssr::portlet::PortletCtx;
+    /// #
+    /// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+    /// # struct Article;
+    /// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+    /// # struct History;
+    /// #
+    /// # impl IntoRender for History {
+    /// #     type Output = AnyView;
+    /// #
+    /// #     fn into_render(self) -> Self::Output {
+    /// #         ().into_any()
+    /// #     }
+    /// # }
+    /// #
+    /// # impl History {
+    /// #     fn push(&mut self, article: Article) {
+    /// #     }
+    /// # }
+    /// #
+    /// #[component]
+    /// pub fn ArticleListing() -> impl IntoView {
+    ///     let article = expect_context::<ArcResource<Result<Article, ServerFnError>>>();
+    ///     let history = expect_context::<PortletCtx<History>>();
+    ///
+    ///     view! {
+    ///         {history.update_with(
+    ///             move || {
+    ///                 let article = article.clone();
+    ///                 async move {
+    ///                     article.await.ok()
+    ///                 }
+    ///             },
+    ///             |history, article| if let Some(article) = article {
+    ///                 // if the history portlet is visible, include this article
+    ///                 if let Some(history) = history {
+    ///                     history.push(article)
+    ///                 }
+    ///             },
+    ///         )}
+    ///         <div>
+    ///             // Other components/elements.
+    ///         </div>
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Note that this method returns a `<Suspense/>`, which should be
+    /// included into the view tree to be returned by the component like
+    /// in the above example to ensure the update happen as the component
+    /// renders.
+    pub fn update_with<Fut, U>(
+        &self,
+        fetcher: impl Fn() -> Fut + Send + Sync + 'static,
+        updater: impl Fn(&mut Option<T>, U) + Send + Sync + 'static,
+    ) -> impl IntoView
+    where
+        Fut: Future<Output = U> + Send + 'static,
+    {
+        self.inner.update_with(fetcher, updater)
+    }
+
     /// A generic portlet renderer via this generic portlet context.
     ///
     /// This renderer simplifies the creation of portlet components based
