@@ -1,5 +1,6 @@
 //! Provides the signal-resource pairing for synchronized SSR.
 use std::{
+    future::Future,
     fmt::{Debug, Formatter, Result},
     panic::Location,
     sync::Arc,
@@ -11,9 +12,9 @@ use leptos::{
             guards::{UntrackedWriteGuard, WriteGuard},
             ArcReadSignal, ArcRwSignal, ArcWriteSignal,
         },
-        traits::{DefinedAt, Get, GetUntracked, IsDisposed, Notify, UntrackableGuard, Write},
+        traits::{DefinedAt, Get, GetUntracked, IsDisposed, Notify, Set, UntrackableGuard, Write},
     },
-    server::ArcResource,
+    IntoView, prelude::Suspend, server::ArcResource, suspense::Suspense, view,
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -464,6 +465,142 @@ impl<T> SsrSignalResource<T> {
     pub fn inner_write_only(&self) -> ArcWriteSignal<T> {
         self.inner.signal_write.clone()
     }
+
+    /// With the provided data fetcher, generate a view to be added to
+    /// a view tree that will set the results to the appropriate write
+    /// signal.
+    ///
+    /// Similar to the fetcher for typical `Resource`s, this use it to
+    /// generates a new `Future` to get the latest data.  When created
+    /// within a reactive context, any invocation of [`.track()`](
+    /// leptos::reactive::traits::Track::track) on any reactive data
+    /// will result in the expected reactivity.
+    ///
+    /// Internally, the full functionality of `SsrSignalResource` is
+    /// only used under SSR, as the usage of the underlying locks must
+    /// be used with `ArcResource`, but given the idea is that this
+    /// wraps a signal; under CSR, the underlying `ArcWriteSignal` is
+    /// used directly with the data after simply `await` on the provided
+    /// `fetcher.
+    ///
+    /// This particular function is provided as the prescribed method to
+    /// issue the appropriate calls to the appropriate write signals to
+    /// ensure the correct signals are written to and read from at the
+    /// correct stage to avoid issues from hydration and to ensure the
+    /// interactivity during CSR are maintained even after hydration.
+    ///
+    /// Typical usage may look like this.
+    ///
+    /// ```
+    /// # use leptos::{
+    /// #     prelude::{AnyView, IntoAny, IntoRender, expect_context},
+    /// #     server::ArcResource, component, view, IntoView,
+    /// # };
+    /// # use leptos_sync_ssr::signal::SsrSignalResource;
+    /// #
+    /// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+    /// # struct TableOfContents;
+    /// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+    /// # struct Document {
+    /// #     toc: TableOfContents,
+    /// # }
+    /// #
+    /// #[component]
+    /// pub fn DocumentView() -> impl IntoView {
+    ///     let document = expect_context::<ArcResource<Document>>();
+    ///     let toc = expect_context::<SsrSignalResource<TableOfContents>>();
+    ///
+    ///     view! {
+    ///         {toc.set_with(move || {
+    ///             let document = document.clone();
+    ///             // Optionally ensure updates to the document resource is tracked;
+    ///             // this particular usage is the current workaround.
+    ///             // See: https://github.com/leptos-rs/leptos/pull/4061
+    ///             // #[cfg(not(feature = "ssr"))]
+    ///             // document.track();
+    ///             async move {
+    ///                 document.await.toc
+    ///             }
+    ///         })}
+    ///         <div>
+    ///             // Other components/elements.
+    ///         </div>
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// Note that this method returns a `<Suspense/>`, which should be
+    /// included into the view tree to be returned by the component like
+    /// in the above example to ensure the update happen as the component
+    /// renders.
+    pub fn set_with<Fut>(
+        &self,
+        fetcher: impl Fn() -> Fut + Send + Sync + 'static,
+    ) -> impl IntoView
+    where
+        T: Clone + Send + Sync + 'static,
+        Fut: Future<Output = T> + Send + 'static,
+    {
+        let this = self.clone();
+        // This fetcher will need to be called inside a resource first as it
+        // reconfigures the underlying `SsrSignalResource` to manual release
+        // mode upon acquisition of the `SsrWriteSignal` - this ensures the
+        // `ArcResource` on the other end will only unlock when signaled, which
+        // the following resource will as it directly leads to `.set()` being
+        // called to signal the unlock.
+        let fetcher = Arc::new(fetcher);
+        // Note this resource only used on the server - the fetcher is invoked
+        // again directly to write to underlying `ArcWriteSignal` directly, and
+        // this second invocation will not be problematic as the same data is
+        // being written to for the second time under SSR, and for the first
+        // (and only) time under hydrate/CSR which would set the underlying
+        // signal with the real expected value without the other end waiting.
+        #[allow(unused_variables)]
+        let res = ArcResource::new(|| (), {
+            let this = this.clone();
+            let fetcher = fetcher.clone();
+            move |_| {
+                let ws = this.write_only();
+                let fut = fetcher();
+                async move {
+                    ws.set(fut.await);
+                }
+            }
+        });
+        // Under SSR, the resource declared above must be used to ensure the
+        // write signal is set at the appropriate time after the unlock as
+        // per the usage of the provided `write_only` signal.
+        #[cfg(feature = "ssr")]
+        let result = view! {
+            <Suspense>{
+                move || {
+                    let res = res.clone();
+                    Suspend::new(async move {
+                        res.await;
+                    })
+                }
+            }</Suspense>
+        };
+        // Under not SSR (i.e. hydrate/CSR), the suspend can invoke the
+        // future directly to apply the result to the underlying
+        // `ArcWriteSignal`.
+        #[cfg(not(feature = "ssr"))]
+        let result = view! {
+            <Suspense>{
+                let this = this.clone();
+                let fetcher = fetcher.clone();
+                move || {
+                    let this = this.clone();
+                    let fut = fetcher();
+                    Suspend::new(async move {
+                        this.inner_write_only().set(fut.await);
+                    })
+                }
+            }</Suspense>
+        };
+        result
+    }
+
 }
 
 impl<T> Debug for SsrSignalResource<T> {

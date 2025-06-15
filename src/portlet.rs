@@ -18,15 +18,14 @@
 //! must be placed in a higher level of the view tree before `PortletCtx` may
 //! be [provided](PortletCtx::provide) as a context.
 
-use std::{future::Future, sync::Arc};
+use std::future::Future;
 
 use leptos::{
     prelude::{
         expect_context, provide_context, AnyView, IntoAny, IntoRender, Render, RenderHtml, Suspend,
     },
     reactive::traits::Set,
-    server::ArcResource,
-    suspense::{Suspense, Transition},
+    suspense::Transition,
     view, IntoView,
 };
 
@@ -187,23 +186,7 @@ where
     ///
     /// This helper function returns a view that should be added to the
     /// view tree such that the desired set function can be effected.
-    ///
-    /// Similar to the fetcher for typical `Resource`s, this use it to
-    /// generates a new `Future` to get the latest data.  When created
-    /// within a reactive context, any invocation of [`.track()`](
-    /// leptos::reactive::traits::Track::track) on any reactive data
-    /// will result in the expected reactivity.
-    ///
-    /// Internally, the full functionality of [`SsrSignalResource`] is
-    /// only used under SSR, as the usage of the underlying locks must
-    /// be used with `ArcResource`, but given the idea is that this
-    /// wraps a signal, under CSR (well, after await on the applicable
-    /// resource) the `ArcWriteSignal` is then written to directly.
-    ///
-    /// This implementation is even more complex than just using the
-    /// `SsrSignalResource` directly, however, the end result is that
-    /// under CSR only the standard `ArcRwSignal` is what's effectively
-    /// used.
+    /// See [`SsrSignalResource::set_with`] for full documentation.
     ///
     /// Typical usage may look like this.
     ///
@@ -274,64 +257,7 @@ where
     where
         Fut: Future<Output = Option<T>> + Send + 'static,
     {
-        let ctx = self.clone();
-        // This fetcher will need to be called inside a resource first as it
-        // reconfigures the underlying `SsrSignalResource` to manual release
-        // mode upon acquisition of the `SsrWriteSignal` - this ensures the
-        // `ArcResource` on the other end will only unlock when signaled, which
-        // the following resource will as it directly leads to `.set()` being
-        // called to signal the unlock.
-        let fetcher = Arc::new(fetcher);
-        // Note this resource only used on the server - the fetcher is invoked
-        // again directly to write to underlying `ArcWriteSignal` directly, and
-        // this second invocation will not be problematic as the same data is
-        // being written to for the second time under SSR, and for the first
-        // (and only) time under hydrate/CSR which would set the underlying
-        // signal with the real expected value without the other end waiting.
-        #[allow(unused_variables)]
-        let res = ArcResource::new(|| (), {
-            let ctx = ctx.clone();
-            let fetcher = fetcher.clone();
-            move |_| {
-                let ws = ctx.inner.write_only();
-                let fut = fetcher();
-                async move {
-                    ws.set(fut.await);
-                }
-            }
-        });
-        // Under SSR, the resource declared above must be used to ensure the
-        // write signal is set at the appropriate time after the unlock as
-        // per the usage of the provided `write_only` signal.
-        #[cfg(feature = "ssr")]
-        let result = view! {
-            <Suspense>{
-                move || {
-                    let res = res.clone();
-                    Suspend::new(async move {
-                        res.await;
-                    })
-                }
-            }</Suspense>
-        };
-        // Under not SSR (i.e. hydrate/CSR), the suspend can invoke the
-        // future directly to apply the result to the underlying
-        // `ArcWriteSignal`.
-        #[cfg(not(feature = "ssr"))]
-        let result = view! {
-            <Suspense>{
-                let ctx = ctx.clone();
-                let fetcher = fetcher.clone();
-                move || {
-                    let ctx = ctx.clone();
-                    let fut = fetcher();
-                    Suspend::new(async move {
-                        ctx.inner.inner_write_only().set(fut.await);
-                    })
-                }
-            }</Suspense>
-        };
-        result
+        self.inner.set_with(fetcher)
     }
 
     /// A generic portlet renderer via this generic portlet context.
