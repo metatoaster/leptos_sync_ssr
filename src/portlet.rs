@@ -307,7 +307,7 @@ where
     ///
     /// ```
     /// # use leptos::{
-    /// #     prelude::{AnyView, IntoAny, IntoRender, ServerFnError},
+    /// #     prelude::{AnyView, IntoAny, IntoRender},
     /// #     component, view, IntoView,
     /// # };
     /// # use leptos_sync_ssr::portlet::PortletCtx;

@@ -273,14 +273,12 @@ impl<T> SsrSignalResource<T> {
     ///
     /// ```
     /// # use std::sync::{Arc, Mutex};
-    /// # use futures::StreamExt;
     /// # use leptos::prelude::*;
     /// # use leptos_sync_ssr::{component::SyncSsrSignal, signal::SsrSignalResource};
-    /// # use leptos_sync_ssr::CoReadyCoordinator;
     /// #
     /// # tokio_test::block_on(async {
     /// #     let _ = any_spawner::Executor::init_tokio();
-    /// #     let mut tasks = Arc::new(Mutex::new(vec![]));
+    /// #     let tasks = Arc::new(Mutex::new(vec![]));
     /// #     let owner = Owner::new();
     /// #     owner.set();
     /// #
@@ -347,14 +345,12 @@ impl<T> SsrSignalResource<T> {
     ///
     /// ```should_panic
     /// # use std::sync::{Arc, Mutex};
-    /// # use futures::StreamExt;
     /// # use leptos::prelude::*;
     /// # use leptos_sync_ssr::{component::SyncSsrSignal, signal::SsrSignalResource};
-    /// # use leptos_sync_ssr::CoReadyCoordinator;
     /// #
     /// # tokio_test::block_on(async {
     /// #     let _ = any_spawner::Executor::init_tokio();
-    /// #     let mut tasks = Arc::new(Mutex::new(vec![]));
+    /// #     let tasks = Arc::new(Mutex::new(vec![]));
     /// #     let owner = Owner::new();
     /// #     owner.set();
     /// #
@@ -502,7 +498,7 @@ impl<T> SsrSignalResource<T> {
     ///
     /// ```
     /// # use leptos::{
-    /// #     prelude::{AnyView, IntoAny, IntoRender, expect_context},
+    /// #     prelude::expect_context,
     /// #     server::ArcResource, component, view, IntoView,
     /// # };
     /// # use leptos_sync_ssr::signal::SsrSignalResource;
@@ -642,7 +638,7 @@ impl<T> SsrSignalResource<T> {
     ///
     /// ```
     /// # use leptos::{
-    /// #     prelude::{AnyView, IntoAny, IntoRender, expect_context},
+    /// #     prelude::expect_context,
     /// #     server::ArcResource, component, view, IntoView,
     /// # };
     /// # use leptos_sync_ssr::signal::SsrSignalResource;

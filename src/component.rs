@@ -153,7 +153,7 @@ pub fn SyncSsr(children: Children) -> impl IntoView {
 ///     Home,
 ///     Author(String),
 ///     Article(u64),
-/// };
+/// }
 ///
 /// #[component]
 /// pub fn App() -> impl IntoView {
