@@ -384,11 +384,11 @@ where
 
     /// Acquire the inner `ArcWriteSignal`.
     ///
-    /// This calls the inner's [`SsrWriteSignal::inner_write_only`] to
-    /// return the raw write signal as per that method.  This is the
-    /// same signal used for the `clear` method, except rather than
-    /// setting to `None` directly a more careful cleanup approach may
-    /// be applied.
+    /// This calls the inner [`SsrSignalResource::inner_write_only()`]
+    /// to acquire a clone of the raw write signal as per that method.
+    /// This is the same signal used for the `clear` method, except
+    /// rather than setting to `None` directly, a more controlled
+    /// cleanup approach may be applied.
     ///
     /// Note that this is typically expected to be used in conjunction
     /// with [`on_cleanup`](leptos::reactive::owner::on_cleanup) under
@@ -399,10 +399,10 @@ where
 
     /// Acquire the inner `ArcResource`.
     ///
-    /// This calls the inner's [`SsrWriteSignal::read_only`] to acquire
-    /// a clone of the resource as per that method.  This is provided to
-    /// facilitate more complex rendering requirements, such as the need
-    /// to `await` for other resources beyond this one.
+    /// This calls the inner [`SsrSignalResource::read_only()`] to
+    /// acquire a clone of the resource as per that method.  This is
+    /// provided to facilitate more complex rendering requirements, such
+    /// as the need to `await` for other resources beyond this one.
     pub fn inner_resource(&self) -> ArcResource<Option<T>> {
         self.inner.read_only()
     }
