@@ -9,7 +9,7 @@
 //! provided by the article is available.
 //!
 //! This module provides [`PortletCtx`] which contains a few methods that works
-//! together to implement the portlet UI pattern in a fully managed manner.
+//! together to implement the portlet UI pattern in a largely managed manner.
 //! Given that it makes use of [`SsrSignalResource`] internally, the resulting
 //! component responsible for the rendering may be placed anywhere on the view
 //! tree, as the resource providing the data will wait for the signal be
@@ -24,7 +24,8 @@ use leptos::{
     prelude::{
         expect_context, provide_context, AnyView, IntoAny, IntoRender, Render, RenderHtml, Suspend,
     },
-    reactive::traits::Set,
+    reactive::{signal::ArcWriteSignal, traits::Set},
+    server::ArcResource,
     suspense::Transition,
     view, IntoView,
 };
@@ -57,26 +58,8 @@ where
         + PartialEq
         + Send
         + Sync
-        + IntoRender
         + 'static,
-    <T as leptos::prelude::IntoRender>::Output: RenderHtml + Send + 'static,
-    Suspend<Option<AnyView>>: RenderHtml + Render,
 {
-    /// Clears the portlet.
-    ///
-    /// Upon invocation of this method, a `None` will be written to the
-    /// underlying write signal, which should trigger the re-rendering
-    /// through the associated function [`render`](PortletCtx::render).
-    /// Given the `None` value, this typically results in nothing being
-    /// rendered, achieving the goal of clearing the portlet.
-    ///
-    /// Note that this is typically expected to be used in conjunction
-    /// with [`on_cleanup`](leptos::reactive::owner::on_cleanup) under
-    /// CSR.  Usage under SSR may lead to unexpected behavior.
-    pub fn clear(&self) {
-        self.inner.inner_write_only().set(None);
-    }
-
     /// Provide this as a context for a Leptos `App`.
     ///
     /// The reason why there is no constructor provided and only done so
@@ -96,14 +79,6 @@ where
     ///
     /// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
     /// # struct Nav;
-    /// #
-    /// # impl IntoRender for Nav {
-    /// #     type Output = AnyView;
-    /// #
-    /// #     fn into_render(self) -> Self::Output {
-    /// #         ().into_any()
-    /// #     }
-    /// # }
     /// #
     /// #[component]
     /// pub fn App() -> impl IntoView {
@@ -192,7 +167,7 @@ where
     ///
     /// ```
     /// # use leptos::{
-    /// #     prelude::{AnyView, IntoAny, IntoRender, ServerFnError, expect_context},
+    /// #     prelude::{ServerFnError, expect_context},
     /// #     server::ArcResource,
     /// #     component, view, IntoView,
     /// # };
@@ -202,14 +177,6 @@ where
     /// # struct Author;
     /// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
     /// # struct Nav;
-    /// #
-    /// # impl IntoRender for Nav {
-    /// #     type Output = AnyView;
-    /// #
-    /// #     fn into_render(self) -> Self::Output {
-    /// #         ().into_any()
-    /// #     }
-    /// # }
     /// #
     /// #[component]
     /// pub fn AuthorListing() -> impl IntoView {
@@ -268,7 +235,7 @@ where
     ///
     /// ```
     /// # use leptos::{
-    /// #     prelude::{AnyView, IntoAny, IntoRender, ServerFnError, expect_context},
+    /// #     prelude::{ServerFnError, expect_context},
     /// #     server::ArcResource,
     /// #     component, view, IntoView,
     /// # };
@@ -278,14 +245,6 @@ where
     /// # struct Article;
     /// # #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
     /// # struct History;
-    /// #
-    /// # impl IntoRender for History {
-    /// #     type Output = AnyView;
-    /// #
-    /// #     fn into_render(self) -> Self::Output {
-    /// #         ().into_any()
-    /// #     }
-    /// # }
     /// #
     /// # impl History {
     /// #     fn push(&mut self, article: Article) {
@@ -376,7 +335,12 @@ where
     /// ## Panics
     /// Panics if `PortletCtx<T>` is not found in the current reactive
     /// owner or its ancestors.
-    pub fn render() -> impl IntoView {
+    pub fn render() -> impl IntoView
+    where
+        T: IntoRender,
+        <T as leptos::prelude::IntoRender>::Output: RenderHtml + Send + 'static,
+        Suspend<Option<AnyView>>: RenderHtml + Render,
+    {
         let ctx = expect_context::<PortletCtx<T>>();
         // The resource must be used and not the underlying `ArcReadSignal`,
         // hydration error results otherwise.
@@ -401,5 +365,45 @@ where
             })
         };
         view! { <Transition>{move || suspend() }</Transition> }
+    }
+
+    /// Clears the portlet.
+    ///
+    /// Upon invocation of this method, a `None` will be written to the
+    /// underlying write signal, which should trigger the re-rendering
+    /// through the associated function [`render`](PortletCtx::render).
+    /// Given the `None` value, this typically results in nothing being
+    /// rendered, achieving the goal of clearing the portlet.
+    ///
+    /// Note that this is typically expected to be used in conjunction
+    /// with [`on_cleanup`](leptos::reactive::owner::on_cleanup) under
+    /// CSR.  Usage under SSR may lead to unexpected behavior.
+    pub fn clear(&self) {
+        self.inner.inner_write_only().set(None);
+    }
+
+    /// Acquire the inner `ArcWriteSignal`.
+    ///
+    /// This calls the inner's [`SsrWriteSignal::inner_write_only`] to
+    /// return the raw write signal as per that method.  This is the
+    /// same signal used for the `clear` method, except rather than
+    /// setting to `None` directly a more careful cleanup approach may
+    /// be applied.
+    ///
+    /// Note that this is typically expected to be used in conjunction
+    /// with [`on_cleanup`](leptos::reactive::owner::on_cleanup) under
+    /// CSR.  Usage under SSR may lead to unexpected behavior.
+    pub fn inner_write_signal(&self) -> ArcWriteSignal<Option<T>> {
+        self.inner.inner_write_only()
+    }
+
+    /// Acquire the inner `ArcResource`.
+    ///
+    /// This calls the inner's [`SsrWriteSignal::read_only`] to acquire
+    /// a clone of the resource as per that method.  This is provided to
+    /// facilitate more complex rendering requirements, such as the need
+    /// to `await` for other resources beyond this one.
+    pub fn inner_resource(&self) -> ArcResource<Option<T>> {
+        self.inner.read_only()
     }
 }
