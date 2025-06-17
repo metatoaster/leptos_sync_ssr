@@ -3,6 +3,7 @@ name: build
 on:
   push:
     branches:
+      - "0.1"
       - "main"
       - "testing"
   pull_request:
