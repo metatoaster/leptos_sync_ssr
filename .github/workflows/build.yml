@@ -6,6 +6,8 @@ on:
       - "0.1"
       - "main"
       - "testing"
+    tags:
+      - "v0.1.0"
   pull_request:
     branches:
       - "main"
